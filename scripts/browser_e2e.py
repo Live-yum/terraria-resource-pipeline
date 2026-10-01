@@ -66,6 +66,7 @@ async def run():
                     # A browser click without affirmative review must not exist
                     # as an enabled action, even though the output is complete.
                     assert not await page.locator("#publish").is_enabled()
+                    assert await page.locator("#publish-status").inner_text() == "", "Previous job success leaked into new review"
                     await page.screenshot(path=str(evidence / f"02-review-v{revision}.png"), full_page=True)
                     await page.locator("#confirm").check()
                     await page.locator("#publish").click()

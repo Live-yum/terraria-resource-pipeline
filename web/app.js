@@ -20,12 +20,12 @@ function renderReview(job) {
   if(renderedJob===renderKey)return;renderedJob=renderKey;
   $('raw-result').hidden=job.kind!=='raw-input-preflight';
   if(job.kind==='raw-input-preflight'){
-    selectedDigest=null;$('confirm').checked=false;$('confirm').disabled=true;$('publish').disabled=true;
+    selectedDigest=null;status('publish-status','');$('confirm').checked=false;$('confirm').disabled=true;$('publish').disabled=true;
     $('review').hidden=true;$('empty-review').hidden=false;$('empty-review').textContent='该任务仅检查真实输入；请查看下方来源与阻塞项';
     renderRaw(job);return;
   }
   $('empty-review').hidden=true;$('review').hidden=false;
-  if(selectedDigest!==job.reviewDigest){$('confirm').checked=false;selectedDigest=job.reviewDigest;}
+  if(selectedDigest!==job.reviewDigest){status('publish-status','');$('confirm').checked=false;selectedDigest=job.reviewDigest;}
   $('job-state').textContent=`${stateLabels[job.state]||job.state} (${job.state})`;$('version').textContent=job.gameVersion||'';
   $('summary').replaceChildren();
   for(const [name,value] of [['输入文件',job.filename],['输入哈希',job.inputSha256],['输出版本',job.release||'待提取'],['对象总量',job.objectBytes===undefined?'待计算':`${job.objectBytes} 字节`],['Git 提交',job.commit||'尚未发布']]){
@@ -73,9 +73,9 @@ $('raw-upload').onsubmit=async event=>{
 };
 $('confirm').onchange=()=>{$('publish').disabled=publishing||!$('confirm').checked;};
 $('publish').onclick=async()=>{
-  if(publishing)return;publishing=true;$('publish').disabled=true;
-  try{const job=await api(`/api/jobs/${selected}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewDigest:selectedDigest,confirmed:$('confirm').checked})});status('publish-status',`已推送本地 Git：${job.commit}`);await refreshJobs();}
-  catch(error){status('publish-status',error.message,true);}
+  if(publishing)return;const identity=selected;publishing=true;$('publish').disabled=true;
+  try{const job=await api(`/api/jobs/${identity}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewDigest:selectedDigest,confirmed:$('confirm').checked})});if(selected===identity)status('publish-status',`已推送本地 Git：${job.commit}`);await refreshJobs();}
+  catch(error){if(selected===identity)status('publish-status',error.message,true);}
   finally{publishing=false;await refreshJobs();}
 };
 async function hash(bytes){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');}
