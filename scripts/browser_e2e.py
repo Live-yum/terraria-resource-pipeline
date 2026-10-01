@@ -54,6 +54,24 @@ async def run():
                     await page.screenshot(path=str(evidence / f"03-client-v{revision}.png"), full_page=True)
                 pointer = await (await page.request.get("http://127.0.0.1:8765/api/current")).json()
                 assert pointer["previous"] and pointer["release"] != pointer["previous"]
+                await page.reload(wait_until="domcontentloaded")
+                await page.locator("#client-status").filter(has_text="已恢复已验证缓存版本 0.0.2").wait_for()
+                await page.route("**/cdn/**", lambda route: route.abort())
+                await page.locator("#load-family").click()
+                await page.get_by_role("heading", name="新增合成物品", exact=True).wait_for()
+                await page.screenshot(path=str(evidence / "04-offline-cached-resources.png"), full_page=True)
+                await page.unroute("**/cdn/**")
+                # A damaged downloaded manifest must not replace the verified
+                # snapshot. Use a fresh fake digest/path so no cache masks it.
+                await page.route("**/api/current", lambda route: route.fulfill(json={**pointer, "manifest": "releases/" + "a" * 64 + "/manifest.json", "manifestSha256": "a" * 64}))
+                await page.route("**/cdn/releases/" + "a" * 64 + "/manifest.json", lambda route: route.fulfill(body="corrupted manifest"))
+                await page.locator("#refresh-client").click()
+                await page.locator("#client-status").filter(has_text="SHA-256校验失败；保留原版本").wait_for()
+                await page.locator("#load-family").click()
+                await page.get_by_role("heading", name="新增合成物品", exact=True).wait_for()
+                await page.set_viewport_size({"width":390,"height":844})
+                assert await page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Narrow screen horizontal overflow"
+                await page.screenshot(path=str(evidence / "05-narrow-corruption-preserves-version.png"), full_page=True)
                 assert not errors, errors
                 (evidence / "acceptance.json").write_text(json.dumps({"passed": True, "syntheticOnly": True, "pageErrors": errors, "pointer": pointer}, ensure_ascii=False, indent=2))
                 await browser.close()
