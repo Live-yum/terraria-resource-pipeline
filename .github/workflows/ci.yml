@@ -19,7 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --check web/app.js && node --check web/cache.js
+      - run: node --check web/app.js && node --check web/cache.js && node --check web/contracts.js
+      - run: node --test tests/client_contracts.test.mjs
       - run: python -m pip install playwright==1.56.0
       - run: python -m playwright install --with-deps chromium
       - run: python scripts/browser_e2e.py

@@ -1,3 +1,4 @@
+import {validatePointer,validateManifestIdentity} from './contracts.js';
 import {cachedObject,storeObject,saveSnapshot,loadSnapshot,boundedBytes} from './cache.js';
 const $ = id => document.getElementById(id);
 const familyLabels = {items:'物品',tiles:'方块',walls:'墙壁',paints:'油漆与涂层',npcs:'生物与图鉴',buffs:'增益与减益',prefixes:'前缀',player:'人物与装备',worldgen:'世界生成',markers:'地图标记',pixel:'像素查找',map:'地图颜色',locales:'本地化',ids:'ID 常量'};
@@ -74,7 +75,7 @@ $('raw-upload').onsubmit=async event=>{
 $('confirm').onchange=()=>{$('publish').disabled=publishing||!$('confirm').checked;};
 $('publish').onclick=async()=>{
   if(publishing)return;const identity=selected;publishing=true;$('publish').disabled=true;
-  try{const job=await api(`/api/jobs/${identity}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewDigest:selectedDigest,confirmed:$('confirm').checked})});if(selected===identity)status('publish-status',`已推送本地 Git：${job.commit}`);await refreshJobs();}
+  try{const job=await api(`/api/jobs/${identity}/publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewDigest:selectedDigest,confirmed:$('confirm').checked})});if(selected===identity)status('publish-status',job.publicationNoOp?`该版本已发布，未重复推送：${job.commit}`:`已推送本地 Git：${job.commit}`);await refreshJobs();}
   catch(error){if(selected===identity)status('publish-status',error.message,true);}
   finally{publishing=false;await refreshJobs();}
 };
@@ -97,10 +98,10 @@ async function pack(reference){
   return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
 }
 $('refresh-client').onclick=async()=>{
-  const epoch=++clientEpoch;
-  try{const pointer=await api('/api/current');if(!pointer){status('client-status','CDN还没有已审核发布的版本');return;}
-    const bytes=await verified(pointer.manifest,pointer.manifestSha256);const candidate=JSON.parse(new TextDecoder().decode(bytes));
-    if(candidate.schemaVersion!==1||!candidate.coverage.complete)throw Error('版本结构或覆盖不完整');
+  const epoch=++clientEpoch;status('client-status','正在检查版本…');
+  try{const pointer=await api('/api/current');if(epoch!==clientEpoch)return;if(!pointer){status('client-status','CDN还没有已审核发布的版本');return;}
+    validatePointer(pointer);
+    const bytes=await verified(pointer.manifest,pointer.manifestSha256);const candidate=validateManifestIdentity(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)),pointer);
     // Verify shared dictionaries before changing the active snapshot. Failed
     // downloads leave the old manifest and visible content untouched.
     await pack(candidate.strings);await pack(candidate.images);
@@ -128,5 +129,11 @@ $('load-family').onclick=async()=>{
 };
 let refreshing=false;
 async function poll(){if(refreshing)return;refreshing=true;try{await refreshJobs();}catch(error){status('upload-status',error.message,true);}finally{refreshing=false;}}
-async function restoreClient(){const epoch=clientEpoch;try{const saved=await loadSnapshot();if(saved&&await hash(saved.manifestBytes)===saved.pointer.manifestSha256){const manifest=JSON.parse(new TextDecoder().decode(saved.manifestBytes));if(epoch===clientEpoch&&manifest.schemaVersion===1&&manifest.coverage.complete){clientManifest=manifest;clientRelease=saved.pointer.release;status('client-status',`已恢复已验证缓存版本 ${manifest.gameVersion}`);}}}catch(error){status('client-status','缓存不可用，可重新检查CDN更新',true);}}
+async function restoreClient(){const epoch=clientEpoch;try{
+  const saved=await loadSnapshot();if(!saved)return;
+  validatePointer(saved.pointer);
+  if(await hash(saved.manifestBytes)!==saved.pointer.manifestSha256)throw Error('缓存清单校验失败');
+  const manifest=validateManifestIdentity(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(saved.manifestBytes)),saved.pointer);
+  if(epoch===clientEpoch){clientManifest=manifest;clientRelease=saved.pointer.release;status('client-status',`已恢复已验证缓存版本 ${manifest.gameVersion}`);}
+}catch(error){if(epoch===clientEpoch)status('client-status','缓存不可用，可重新检查CDN更新',true);}}
 restoreClient();poll();setInterval(poll,2000);

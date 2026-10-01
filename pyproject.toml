@@ -2,7 +2,7 @@
 name = "terraria-resource-pipeline"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["fastapi==0.141.1", "uvicorn==0.52.1", "python-multipart==0.0.32", "pydantic==2.13.4", "pillow==12.3.0"]
+dependencies = ["fastapi==0.141.1", "starlette==1.6.0", "uvicorn==0.52.1", "python-multipart==0.0.32", "pydantic==2.13.4", "pillow==12.3.0"]
 
 [project.optional-dependencies]
 test = ["httpx==0.28.1"]

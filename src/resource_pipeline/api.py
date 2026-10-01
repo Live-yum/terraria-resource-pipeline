@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .fixtures import demo_archive
+from .intake import UploadBodyLimitMiddleware
 from .pipeline import Pipeline
 from .preflight import RawInputPreflight
 from .security import ArchiveLimits, PipelineError, relative_path
@@ -39,6 +40,7 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
     app.state.pipeline = pipeline
     app.state.raw_preflight = raw_preflight
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
+    app.add_middleware(UploadBodyLimitMiddleware, archive_bytes=ArchiveLimits().archive_bytes)
 
     @app.middleware("http")
     async def local_origin(request: Request, call_next):

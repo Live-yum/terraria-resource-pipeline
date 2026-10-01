@@ -81,6 +81,21 @@ async def run():
                     await page.screenshot(path=str(evidence / f"03-client-v{revision}.png"), full_page=True)
                 pointer = await (await page.request.get("http://127.0.0.1:8765/api/current")).json()
                 assert pointer["previous"] and pointer["release"] != pointer["previous"]
+                # A separately reviewed identical upload keeps the current
+                # immutable release/history and does not create another commit.
+                await page.locator("#file").set_input_files({"name":"synthetic-v2-again.zip","mimeType":"application/zip","buffer":await response.body()})
+                await page.get_by_role("button",name="上传并开始提取",exact=True).click()
+                await page.locator("#job-state").filter(has_text="READY_FOR_REVIEW").wait_for(timeout=15000)
+                assert await page.locator("#publish-status").inner_text() == ""
+                await page.locator("#confirm").check()
+                await page.locator("#publish").click()
+                await page.locator("#job-state").filter(has_text="PUBLISHED").wait_for(timeout=15000)
+                repeated = await (await page.request.get("http://127.0.0.1:8765/api/current")).json()
+                assert repeated == pointer
+                await page.locator("#publish-status").filter(has_text="未重复推送").wait_for()
+                pointer = repeated
+                await page.locator("#refresh-client").click()
+                await page.locator("#client-status").filter(has_text="已验证版本 0.0.2").wait_for()
                 await page.reload(wait_until="domcontentloaded")
                 await page.locator("#client-status").filter(has_text="已恢复已验证缓存版本 0.0.2").wait_for()
                 await page.route("**/cdn/**", lambda route: route.abort())
@@ -88,9 +103,25 @@ async def run():
                 await page.get_by_role("heading", name="新增合成物品", exact=True).wait_for()
                 await page.screenshot(path=str(evidence / "04-offline-cached-resources.png"), full_page=True)
                 await page.unroute("**/cdn/**")
+                for malformed in ({**pointer, "release": None}, {**pointer, "manifestSha256": "b" * 64}, {**pointer, "gameVersion": "9.9.9"}):
+                    await page.route("**/api/current", lambda route, value=malformed: route.fulfill(json=value))
+                    await page.locator("#refresh-client").click()
+                    await page.locator("#client-status").filter(has_text="保留原版本").wait_for()
+                    saved_release = await page.evaluate("""() => new Promise((resolve,reject)=>{
+                      const open=indexedDB.open('resource-pipeline-cache-v1');
+                      open.onerror=()=>reject(open.error);open.onsuccess=()=>{
+                        const db=open.result,request=db.transaction('meta').objectStore('meta').get('active');
+                        request.onsuccess=()=>{resolve(request.result.pointer.release);db.close();};
+                        request.onerror=()=>reject(request.error);
+                      };
+                    })""")
+                    assert saved_release == pointer["release"], "Malformed pointer replaced the verified cache"
+                    await page.locator("#load-family").click()
+                    await page.get_by_role("heading", name="新增合成物品", exact=True).wait_for()
+                    await page.unroute("**/api/current")
                 # A damaged downloaded manifest must not replace the verified
                 # snapshot. Use a fresh fake digest/path so no cache masks it.
-                await page.route("**/api/current", lambda route: route.fulfill(json={**pointer, "manifest": "releases/" + "a" * 64 + "/manifest.json", "manifestSha256": "a" * 64}))
+                await page.route("**/api/current", lambda route: route.fulfill(json={**pointer, "release": "a" * 64, "manifest": "releases/" + "a" * 64 + "/manifest.json", "manifestSha256": "a" * 64}))
                 await page.route("**/cdn/releases/" + "a" * 64 + "/manifest.json", lambda route: route.fulfill(body="corrupted manifest"))
                 await page.locator("#refresh-client").click()
                 await page.locator("#client-status").filter(has_text="SHA-256校验失败；保留原版本").wait_for()
@@ -100,7 +131,7 @@ async def run():
                 assert await page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Narrow screen horizontal overflow"
                 await page.screenshot(path=str(evidence / "05-narrow-corruption-preserves-version.png"), full_page=True)
                 assert not errors, errors
-                (evidence / "acceptance.json").write_text(json.dumps({"passed": True, "syntheticOnly": True, "rawPreflightBlocked": True, "pageErrors": errors, "pointer": pointer}, ensure_ascii=False, indent=2))
+                (evidence / "acceptance.json").write_text(json.dumps({"passed": True, "syntheticOnly": True, "rawPreflightBlocked": True, "pointerValidationTested": True, "pageErrors": errors, "pointer": pointer}, ensure_ascii=False, indent=2))
                 await browser.close()
         finally:
             server.terminate()

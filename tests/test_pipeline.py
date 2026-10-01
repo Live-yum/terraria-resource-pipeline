@@ -41,6 +41,25 @@ class PipelineTests(unittest.TestCase):
         self.pipeline.publish(two["id"], two["reviewDigest"], True)
         self.assertEqual(one["release"], self.pipeline.current()["previous"])
 
+    def test_identical_reviewed_uploads_are_noop_and_still_verify_evidence(self):
+        initial = self.stage()
+        published = self.pipeline.publish(initial["id"], initial["reviewDigest"], True)
+        pointer = self.pipeline.current()
+        for _ in range(3):
+            repeated = self.stage()
+            with self.assertRaises(PipelineError):
+                self.pipeline.publish(repeated["id"], repeated["reviewDigest"], False)
+            result = self.pipeline.publish(repeated["id"], repeated["reviewDigest"], True)
+            self.assertTrue(result["publicationNoOp"])
+            self.assertEqual(published["commit"], result["commit"])
+            self.assertEqual(pointer, self.pipeline.current())
+        tampered = self.stage()
+        artifact = next((self.pipeline.root / "jobs" / tampered["id"] / "staged" / "objects").rglob("*.gz"))
+        artifact.write_bytes(b"tampered")
+        with self.assertRaises(PipelineError):
+            self.pipeline.publish(tampered["id"], tampered["reviewDigest"], True)
+        self.assertEqual(pointer, self.pipeline.current())
+
     def test_incomplete_blocks_even_when_uploaded_required_list_lies(self):
         job = self.stage(incomplete=True)
         self.assertEqual("BLOCKED", job["state"])

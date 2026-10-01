@@ -192,6 +192,15 @@ class Pipeline:
                 if file.is_symlink() or file.is_file() and sha256(file.read_bytes()) != file.name.split(".")[0]:
                     raise PipelineError("暂存对象校验失败")
             verify_coverage_proof(staged, manifest)
+            if current and current["release"] == job["release"]:
+                # A new reviewed job may contain identical bytes. Keep the
+                # stable pointer/history intact and do not create empty commits
+                # or turn a repeated upload into an interrupted publication.
+                commit = self.git(["--git-dir", str(self.remote), "rev-parse", "refs/heads/main"])
+                job.update(state="PUBLISHED", commit=commit, publicationNoOp=True,
+                           publicationDestination="local-git-cdn-simulator")
+                self.save(job)
+                return job
             job["state"] = "PUBLISHING"
             self.save(job)
             try:
