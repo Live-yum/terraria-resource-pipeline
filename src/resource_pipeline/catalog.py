@@ -1,12 +1,17 @@
 """Deterministic content-addressed packs and explicit coverage reports."""
 from __future__ import annotations
 
+from dataclasses import asdict
 import gzip
 from io import BytesIO
 from pathlib import Path
+import tempfile
 from PIL import Image, UnidentifiedImageError
+from .adapters import validate_normalized_package
+from .adapters_synthetic import SYNTHETIC_SERVER, synthetic_binding, synthetic_profile
+from .contracts import package_file, validate_contract
 from .models import ExtractionEnvelope, FAMILIES
-from .security import PipelineError, atomic_write, canonical_json, read_json, sha256
+from .security import PipelineError, atomic_write, canonical_json, read_json, relative_path, sha256
 
 Image.MAX_IMAGE_PIXELS = 16_000_000
 
@@ -25,8 +30,124 @@ def put_object(root: Path, content: bytes, suffix: str) -> dict:
 
 def pack_json(root: Path, value: object) -> dict:
     raw = canonical_json(value)
+    return pack_bytes(root, raw)
+
+
+def pack_bytes(root: Path, raw: bytes) -> dict:
     zipped = gzip.compress(raw, compresslevel=9, mtime=0)
     return {**put_object(root, zipped, ".json.gz"), "encoding": "gzip", "rawSha256": sha256(raw), "rawBytes": len(raw)}
+
+
+def trusted_synthetic_policy(game_version: str, adapter: str, source_kind: str):
+    """Only fixed, first-party policies; never build policy from upload claims."""
+    if source_kind != "synthetic" or adapter != "synthetic-contract" or game_version not in ("0.0.1", "0.0.2"):
+        raise PipelineError("No installed trusted coverage profile; raw/real game exports remain blocked")
+    revision = int(game_version.rsplit(".", 1)[1])
+    return synthetic_binding(revision), synthetic_profile(revision)
+
+
+def _profile_document(profile) -> dict:
+    def jsonable(value):
+        if isinstance(value, dict):
+            return {key: jsonable(item) for key, item in value.items()}
+        if isinstance(value, (set, frozenset)):
+            return sorted(jsonable(item) for item in value)
+        if isinstance(value, (tuple, list)):
+            return [jsonable(item) for item in value]
+        return value
+    return jsonable(asdict(profile))
+
+
+def _proof_artifacts(base: Path, profile, report: dict) -> dict[str, bytes]:
+    artifacts = {}
+    specs = {spec.key: spec for spec in profile.claims}
+    for claim in report["subclaims"]:
+        if "evidence" not in claim:
+            continue
+        path = claim["evidence"]["path"]
+        artifacts[path] = package_file(base, path).read_bytes()
+        for row in read_json(package_file(base, path)):
+            for reference in specs[claim["key"]].file_fields:
+                value = row
+                for part in reference.field.split("."):
+                    value = value[part]
+                artifacts[value["path"]] = package_file(base, value["path"]).read_bytes()
+    return artifacts
+
+
+def verified_object(root: Path, reference: dict) -> bytes:
+    """Verify both stored and bounded decompressed content-addressed bytes."""
+    path = reference.get("path", "")
+    relative_path(path)
+    if not path.startswith("objects/"):
+        raise PipelineError("资源对象引用不在受审核目录")
+    try:
+        target = package_file(root, path)
+    except PipelineError as exc:
+        raise PipelineError("资源对象缺失或校验失败") from exc
+    if target.stat().st_size != reference.get("bytes") or target.stat().st_size > 128 * 1024 * 1024:
+        raise PipelineError("资源对象缺失或校验失败")
+    stored = target.read_bytes()
+    if sha256(stored) != reference.get("sha256") or target.name.split(".", 1)[0] != reference.get("sha256"):
+        raise PipelineError("资源对象缺失或校验失败")
+    if reference.get("encoding") != "gzip":
+        return stored
+    expected = reference.get("rawBytes")
+    if type(expected) is not int or not 0 <= expected <= 64 * 1024 * 1024:
+        raise PipelineError("资源对象解压容量无效")
+    try:
+        with gzip.GzipFile(fileobj=BytesIO(stored)) as stream:
+            raw = stream.read(expected + 1)
+    except (OSError, EOFError) as exc:
+        raise PipelineError("资源对象解压失败") from exc
+    if len(raw) != expected or sha256(raw) != reference.get("rawSha256"):
+        raise PipelineError("资源对象解压哈希或容量不符")
+    return raw
+
+
+def manifest_references(manifest: dict) -> list[dict]:
+    """All direct proof/catalog objects; image descriptors live in their index."""
+    proof = manifest.get("coverageProof")
+    if not isinstance(proof, dict) or proof.get("schemaVersion") != 1:
+        raise PipelineError("缺少受审核的细粒度覆盖证明")
+    return [*manifest["packs"].values(), manifest["strings"], manifest["images"], manifest["recordHashes"],
+            proof["profile"], proof["document"], proof["catalogSource"], proof["syntheticInput"],
+            *proof["artifacts"].values()]
+
+
+def verify_coverage_proof(root: Path, manifest: dict) -> None:
+    """Recreate only normalized allowlisted evidence and rerun trusted policy.
+
+    Publication never treats a report's own `complete` value as proof.
+    """
+    import json
+    binding, profile = trusted_synthetic_policy(manifest["gameVersion"], manifest["adapter"], manifest["sourceKind"])
+    proof = manifest["coverageProof"]
+    if proof.get("binding") != binding.model_dump() or proof.get("profileId") != profile.profile_id:
+        raise PipelineError("覆盖证明绑定与固定策略不一致")
+    if json.loads(verified_object(root, proof["profile"])) != _profile_document(profile):
+        raise PipelineError("覆盖策略对象与服务器固定策略不一致")
+    source = verified_object(root, proof["syntheticInput"])
+    if source != SYNTHETIC_SERVER or sha256(source) != binding.server_sha256:
+        raise PipelineError("合成输入字节与固定来源不一致")
+    with tempfile.TemporaryDirectory(prefix="verify-resource-proof-") as temporary:
+        package = Path(temporary)
+        atomic_write(package / "coverage.json", verified_object(root, proof["document"]))
+        atomic_write(package / "resource-bundle.json", verified_object(root, proof["catalogSource"]))
+        for name, reference in proof["artifacts"].items():
+            relative_path(name)
+            if name in ("coverage.json", "resource-bundle.json"):
+                raise PipelineError("覆盖证据不能覆盖根清单")
+            atomic_write(package / name, verified_object(root, reference))
+        # Catalog images may have multiple input paths for identical pixels. The
+        # originals are explicit proof artifacts, not an inferred directory copy.
+        report = validate_normalized_package(package, binding, profile)
+        if not report["complete"] or any(manifest["coverage"].get(key) != value for key, value in report.items()):
+            raise PipelineError("细粒度覆盖证明不完整或与审核摘要不一致")
+        # Record hashes are tied to the reviewed manifest, including future diff baselines.
+        record_hash_bytes = verified_object(root, manifest["recordHashes"])
+        if (root / "record-hashes.json").read_bytes() != record_hash_bytes:
+            raise PipelineError("记录差异基线在审核后被修改")
 
 
 def image_object(source: Path, root: Path) -> dict:
@@ -56,8 +177,25 @@ def build_catalog(extracted: Path, output: Path, input_digest: str) -> dict:
     bundle_path = candidates[0]
     envelope = ExtractionEnvelope.model_validate(read_json(bundle_path))
     base = bundle_path.parent
+    binding, profile = trusted_synthetic_policy(envelope.game_version, envelope.adapter, envelope.source_kind)
+    if package_file(base, "synthetic-input.txt").read_bytes() != SYNTHETIC_SERVER:
+        raise PipelineError("Synthetic source bytes do not match the fixed server-side fixture")
+    expected_sources = [{"role": "server", "game_version": binding.game_version, "sha256": binding.server_sha256}]
+    if [source.model_dump() for source in envelope.sources] != expected_sources:
+        raise PipelineError("Declared sources do not match fixed actual synthetic input bytes")
+    detailed = validate_contract(base, binding, profile)
     output.mkdir(parents=True, exist_ok=False)
     missing = [family for family in FAMILIES if not envelope.families.get(family)]
+    catalog_missing = {}
+    specs = {spec.key: spec for spec in profile.claims}
+    for family, claim in profile.catalog_domains.items():
+        expected_ids = {canonical_json(value) for value in specs[claim].expected_ids}
+        actual_ids = {canonical_json(record.id) for record in envelope.families.get(family, [])}
+        if actual_ids - expected_ids:
+            raise PipelineError("Consumer catalog contains an ID outside its trusted profile")
+        absent = [value for value in specs[claim].expected_ids if canonical_json(value) not in actual_ids]
+        if absent:
+            catalog_missing[family] = absent
     unresolved = []
     images = {}
     strings = []
@@ -85,8 +223,9 @@ def build_catalog(extracted: Path, output: Path, input_digest: str) -> dict:
                 aliases.add(key)
             references = []
             for name in record.images:
-                file = base / name
-                if not file.is_file() or file.is_symlink():
+                try:
+                    file = package_file(base, name)
+                except PipelineError:
                     unresolved.append({"family": family, "id": record.id, "path": name})
                     continue
                 if name not in images:
@@ -102,12 +241,27 @@ def build_catalog(extracted: Path, output: Path, input_digest: str) -> dict:
     # One image descriptor per unique PNG object, even when input paths differ.
     objects = {item["sha256"]: item for item in images.values()}
     image_pack = pack_json(output, objects)
-    coverage = {"requiredFamilies": list(FAMILIES), "missingFamilies": missing, "missingImages": unresolved,
-                "complete": not missing and not unresolved}
+    if not missing and not unresolved and not catalog_missing:
+        # Complete-looking catalogs pass the exact same normalized-package
+        # gate as a registered adapter and publication. Keep structured reports
+        # for incomplete catalogs so review can name the absent IDs/images.
+        detailed = validate_normalized_package(base, binding, profile)
+    artifacts = _proof_artifacts(base, profile, detailed)
+    for name in images:
+        artifacts[name] = package_file(base, name).read_bytes()
+    proof = {"schemaVersion": 1, "profileId": profile.profile_id, "binding": binding.model_dump(),
+             "profile": pack_json(output, _profile_document(profile)),
+             "document": pack_bytes(output, package_file(base, "coverage.json").read_bytes()),
+             "catalogSource": pack_bytes(output, bundle_path.read_bytes()),
+             "syntheticInput": pack_bytes(output, SYNTHETIC_SERVER),
+             "artifacts": {name: pack_bytes(output, content) for name, content in sorted(artifacts.items())}}
+    coverage = {**detailed, "requiredFamilies": list(FAMILIES), "missingFamilies": missing, "missingImages": unresolved,
+                "missingCatalogIds": catalog_missing, "complete": detailed["complete"] and not missing and not unresolved and not catalog_missing}
     manifest = {"schemaVersion": 1, "gameVersion": envelope.game_version, "adapter": envelope.adapter,
                 "sourceKind": envelope.source_kind, "inputArchiveSha256": input_digest,
                 "declaredSources": [source.model_dump() for source in envelope.sources],
-                "packs": packs, "strings": string_pack, "images": image_pack,
+                "packs": packs, "strings": string_pack, "images": image_pack, "recordHashes": pack_json(output, record_hashes),
+                "coverageProof": proof,
                 "coverage": coverage, "warnings": envelope.warnings,
                 "counts": {"imageReferences": len(images), "uniqueImages": len(objects), "strings": len(strings)},
                 "publicationScope": "synthetic-demo" if envelope.source_kind == "synthetic" else "private-export-needs-rights-review"}

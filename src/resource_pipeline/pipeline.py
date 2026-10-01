@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
+from io import BytesIO
 import json
-import gzip
+import os
 from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
 from threading import RLock
+from typing import BinaryIO
 import uuid
 
-from .catalog import build_catalog, compare_versions
+from .catalog import build_catalog, compare_versions, manifest_references, verified_object, verify_coverage_proof
 from .security import ArchiveLimits, PipelineError, atomic_write, canonical_json, extract_zip, read_json, sha256
 
 
@@ -92,16 +95,44 @@ class Pipeline:
         return result.stdout
 
     def submit(self, content: bytes, filename: str) -> dict:
-        if len(content) > ArchiveLimits().archive_bytes:
-            raise PipelineError("上传包超过体积限制")
+        return self.submit_file(BytesIO(content), filename)
+
+    def submit_file(self, fileobj: BinaryIO, filename: str) -> dict:
+        """Copy a binary stream with a bounded buffer; never concatenate uploads.
+
+        This call owns only its new UUID directory and cleans partial bytes on
+        failure. Save the queued job only after the complete stream is durable.
+        The caller retains ownership of fileobj and its lifetime.
+        """
         identity = str(uuid.uuid4())
         directory = self.root / "jobs" / identity
-        directory.mkdir(parents=True)
-        atomic_write(directory / "input.zip", content)
-        job = {"id": identity, "state": "UPLOADED", "createdAt": datetime.now(timezone.utc).isoformat(),
-               "filename": Path(filename.replace("\\", "/")).name[:160], "inputSha256": sha256(content), "inputBytes": len(content)}
-        self.save(job)
-        return job
+        directory.mkdir(mode=0o700, parents=True)
+        digest = hashlib.sha256()
+        total = 0
+        archive_limit = ArchiveLimits().archive_bytes
+        try:
+            descriptor = os.open(directory / "input.zip", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as destination:
+                while True:
+                    chunk = fileobj.read(min(1024 * 1024, archive_limit - total + 1))
+                    if not isinstance(chunk, bytes):
+                        raise PipelineError("上传流必须为二进制数据")
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > archive_limit:
+                        raise PipelineError("上传包超过体积限制")
+                    digest.update(chunk)
+                    destination.write(chunk)
+                destination.flush()
+                os.fsync(destination.fileno())
+            job = {"id": identity, "state": "UPLOADED", "createdAt": datetime.now(timezone.utc).isoformat(),
+                   "filename": Path(filename.replace("\\", "/")).name[:160], "inputSha256": digest.hexdigest(), "inputBytes": total}
+            self.save(job)
+            return job
+        except BaseException:
+            shutil.rmtree(directory)
+            raise
 
     def process(self, identity: str) -> dict:
         with self.lock:
@@ -147,24 +178,20 @@ class Pipeline:
             if self.git(["status", "--porcelain"], self.checkout) or self.git(["rev-parse", "HEAD"], self.checkout) != self.git(["--git-dir", str(self.remote), "rev-parse", "main"]):
                 raise PipelineError("本地发布工作区需要人工恢复，不能覆盖未确认的变更")
             manifest = json.loads(manifest_bytes)
-            references = [*manifest["packs"].values(), manifest["strings"], manifest["images"]]
-            image_index = staged / manifest["images"]["path"]
-            if not image_index.is_file() or sha256(image_index.read_bytes()) != manifest["images"]["sha256"]:
-                raise PipelineError("缺少或损坏图片索引")
-            references.extend(json.loads(gzip.decompress(image_index.read_bytes())).values())
+            references = manifest_references(manifest)
+            references.extend(json.loads(verified_object(staged, manifest["images"])).values())
             expected_paths = set()
             for reference in references:
-                file = staged / reference["path"]
                 expected_paths.add(reference["path"])
-                if not file.is_file() or file.is_symlink() or sha256(file.read_bytes()) != reference["sha256"] or file.stat().st_size != reference["bytes"]:
-                    raise PipelineError("资源对象缺失或校验失败")
+                verified_object(staged, reference)
             actual_paths = {str(file.relative_to(staged)).replace('\\', '/') for file in (staged / "objects").rglob("*") if file.is_file()}
             if actual_paths != expected_paths:
                 raise PipelineError("暂存目录包含未审核的多余对象")
             # Verify every staged object before it can enter the Git tree.
             for file in (staged / "objects").rglob("*"):
-                if file.is_file() and (file.is_symlink() or sha256(file.read_bytes()) != file.name.split(".")[0]):
+                if file.is_symlink() or file.is_file() and sha256(file.read_bytes()) != file.name.split(".")[0]:
                     raise PipelineError("暂存对象校验失败")
+            verify_coverage_proof(staged, manifest)
             job["state"] = "PUBLISHING"
             self.save(job)
             try:

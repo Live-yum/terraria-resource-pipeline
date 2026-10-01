@@ -5,10 +5,9 @@ from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -67,17 +66,13 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
             raise HTTPException(404, "任务不存在") from None
 
     @app.post("/api/jobs", status_code=202)
-    async def upload(file: UploadFile = File()):
-        # Read the bounded upload before scheduling: UploadFile is closed when
-        # the HTTP request ends. No worker ever references a closed request file.
-        chunks = []
-        total = 0
-        while chunk := await file.read(1024 * 1024):
-            total += len(chunk)
-            if total > ArchiveLimits().archive_bytes:
-                raise HTTPException(413, "上传包超过体积限制")
-            chunks.append(chunk)
-        created = pipeline.submit(b"".join(chunks), file.filename or "upload.zip")
+    def upload(file: UploadFile = File()):
+        # The synchronous endpoint runs in FastAPI's threadpool. Copy from the
+        # spooled request file while its lifetime is valid; never join a whole
+        # game archive in memory or hand a closed UploadFile to the worker.
+        if file.size is not None and file.size > ArchiveLimits().archive_bytes:
+            raise HTTPException(413, "上传包超过体积限制")
+        created = pipeline.submit_file(file.file, file.filename or "upload.zip")
         if synchronous:
             return pipeline.process(created["id"])
         executor.submit(pipeline.process, created["id"])
