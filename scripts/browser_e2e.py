@@ -14,6 +14,14 @@ import zipfile
 from playwright.async_api import async_playwright
 
 
+def json_response(value):
+    # Playwright supplies Request as the second positional argument when a
+    # handler exposes two parameters. Capture data in a one-argument closure.
+    async def respond(route):
+        await route.fulfill(json=value)
+    return respond
+
+
 async def run():
     evidence = Path("test-results")
     evidence.mkdir(exist_ok=True)
@@ -104,7 +112,7 @@ async def run():
                 await page.screenshot(path=str(evidence / "04-offline-cached-resources.png"), full_page=True)
                 await page.unroute("**/cdn/**")
                 for malformed in ({**pointer, "release": None}, {**pointer, "manifestSha256": "b" * 64}, {**pointer, "gameVersion": "9.9.9"}):
-                    await page.route("**/api/current", lambda route, value=malformed: route.fulfill(json=value))
+                    await page.route("**/api/current", json_response(malformed))
                     await page.locator("#refresh-client").click()
                     await page.locator("#client-status").filter(has_text="保留原版本").wait_for()
                     saved_release = await page.evaluate("""() => new Promise((resolve,reject)=>{
