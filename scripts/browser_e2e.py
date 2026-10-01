@@ -1,5 +1,6 @@
 """Synthetic UI acceptance; run in CI, never against an existing CDN."""
 import asyncio
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import zipfile
 
 from playwright.async_api import async_playwright
 
@@ -32,6 +34,30 @@ async def run():
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 await page.goto("http://127.0.0.1:8765")
                 await page.screenshot(path=str(evidence / "01-upload-home.png"), full_page=True)
+                def raw_fixture(name):
+                    buffer = BytesIO()
+                    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                        archive.writestr(name, "Original synthetic raw-intake fixture. No game code or assets.")
+                        archive.writestr("metadata.json", '{"game_version":"1.4.5.0","complete":true}')
+                    return buffer.getvalue()
+                await page.locator("#server-file").set_input_files({"name":"server-1.4.5.0.zip", "mimeType":"application/zip", "buffer":raw_fixture("server.txt")})
+                await page.locator("#declared-version").fill("1.4.5.0")
+                await page.get_by_role("button", name="上传并检查两份来源", exact=True).click()
+                await page.locator("#raw-upload-status").filter(has_text="已阻止").wait_for(timeout=15000)
+                assert "缺少同版本客户端" in await page.locator("#raw-blockers").inner_text()
+                await page.locator("#client-file").set_input_files({"name":"Content-1.4.5.0.zip", "mimeType":"application/zip", "buffer":raw_fixture("Content/original.txt")})
+                # Repeated submit while uploading must not create duplicate jobs.
+                await page.locator("#raw-upload").evaluate("form=>{form.requestSubmit();form.requestSubmit();}")
+                await page.locator("#raw-upload-status").filter(has_text="已阻止").wait_for(timeout=15000)
+                assert "缺少同版本客户端" not in await page.locator("#raw-blockers").inner_text()
+                raw_jobs = await (await page.request.get("http://127.0.0.1:8765/api/jobs")).json()
+                assert len(raw_jobs) == 2 and all(job["state"] == "BLOCKED" for job in raw_jobs)
+                assert all(not job["executedInput"] and not job["extractionComplete"] for job in raw_jobs)
+                assert await (await page.request.get("http://127.0.0.1:8765/api/current")).json() is None
+                await page.locator("#raw-sources details").first.locator("summary").click()
+                await page.locator("#raw-sources pre").first.filter(has_text='"files"').wait_for()
+                await page.locator("#raw-sources details").first.locator("summary").click()
+                await page.screenshot(path=str(evidence / "01-raw-preflight-blocked.png"), full_page=True)
                 for revision in (1, 2):
                     response = await page.request.get(f"http://127.0.0.1:8765/api/demo/{revision}.zip")
                     await page.locator("#file").set_input_files({"name": f"synthetic-v{revision}.zip", "mimeType": "application/zip", "buffer": await response.body()})
@@ -73,7 +99,7 @@ async def run():
                 assert await page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Narrow screen horizontal overflow"
                 await page.screenshot(path=str(evidence / "05-narrow-corruption-preserves-version.png"), full_page=True)
                 assert not errors, errors
-                (evidence / "acceptance.json").write_text(json.dumps({"passed": True, "syntheticOnly": True, "pageErrors": errors, "pointer": pointer}, ensure_ascii=False, indent=2))
+                (evidence / "acceptance.json").write_text(json.dumps({"passed": True, "syntheticOnly": True, "rawPreflightBlocked": True, "pageErrors": errors, "pointer": pointer}, ensure_ascii=False, indent=2))
                 await browser.close()
         finally:
             server.terminate()

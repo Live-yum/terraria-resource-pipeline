@@ -1,0 +1,57 @@
+name: Real sandbox synthetic acceptance
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bubblewrap-isolation:
+    # Fixed hosted OS; do not disable AppArmor or change namespace security.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install official Ubuntu bubblewrap package
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes bubblewrap
+          /usr/bin/bwrap --version
+          dpkg-query -W bubblewrap
+      - name: Install pipeline dependencies
+        run: python -m pip install -e '.[test]'
+      - name: Verify real network, mount, timeout and capacity isolation
+        # BLOCKED exits nonzero too. Never convert namespace denial to a skip.
+        run: python scripts/ci_sandbox_probe.py
+      - name: Summarize actual verification status
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path('test-results/sandbox/report.json')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              if not report.exists():
+                  summary.write('Real sandbox verification: NOT RUN (setup failed or probe did not start).\n')
+              else:
+                  data = json.loads(report.read_text())
+                  summary.write(f"Real sandbox verification: {data['status']}\n\n")
+                  for name, check in data['checks'].items():
+                      summary.write(f"- {name}: {check['status']}\n")
+                  summary.write('\nOriginal synthetic fixtures only. This is not real game extraction certification.\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-sandbox-synthetic-evidence
+          path: test-results/sandbox/report.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
@@ -14,6 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .fixtures import demo_archive
 from .pipeline import Pipeline
+from .preflight import RawInputPreflight
 from .security import ArchiveLimits, PipelineError, relative_path
 
 
@@ -26,6 +27,7 @@ class Review(BaseModel):
 def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
     state_root = root or Path(os.environ.get("RESOURCE_PIPELINE_STATE", ".runtime"))
     pipeline = Pipeline(state_root)
+    raw_preflight = RawInputPreflight(pipeline)
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="resource-extract")
 
     @asynccontextmanager
@@ -35,6 +37,7 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
 
     app = FastAPI(title="资源更新与审核演示", lifespan=lifespan)
     app.state.pipeline = pipeline
+    app.state.raw_preflight = raw_preflight
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
 
     @app.middleware("http")
@@ -56,7 +59,15 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
 
     @app.get("/api/jobs")
     def jobs():
-        return pipeline.list()
+        results = pipeline.list()
+        for job in results:
+            if job.get("kind") == "raw-input-preflight":
+                for source in job["sources"].values():
+                    inventory = source.get("inventory")
+                    if inventory is not None:
+                        source["inventory"] = {"expandedBytes": inventory["expandedBytes"],
+                                               "fileCount": len(inventory["files"])}
+        return results
 
     @app.get("/api/jobs/{identity}")
     def job(identity: str):
@@ -84,6 +95,21 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
             return pipeline.publish(identity, review.reviewDigest, review.confirmed)
         except KeyError:
             raise HTTPException(404, "任务不存在") from None
+
+    @app.post("/api/raw-jobs", status_code=202)
+    def raw_upload(server_file: UploadFile | None = File(default=None),
+                   client_file: UploadFile | None = File(default=None),
+                   declared_version: str | None = Form(default=None)):
+        uploads = [upload for upload in (server_file, client_file) if upload is not None]
+        if sum(upload.size or 0 for upload in uploads) > raw_preflight.limits.archive_bytes:
+            raise HTTPException(413, "两个输入 ZIP 的合计体积超过上传限制")
+        def source(upload):
+            return (upload.file, upload.filename or "upload.zip") if upload is not None else None
+        created = raw_preflight.submit(source(server_file), source(client_file), declared_version)
+        if synchronous:
+            return raw_preflight.process(created["id"])
+        executor.submit(raw_preflight.process, created["id"])
+        return created
 
     @app.get("/api/current")
     def current():

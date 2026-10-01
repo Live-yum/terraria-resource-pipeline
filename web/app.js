@@ -1,8 +1,10 @@
 import {cachedObject,storeObject,saveSnapshot,loadSnapshot,boundedBytes} from './cache.js';
 const $ = id => document.getElementById(id);
-const families = ['items','tiles','walls','paints','npcs','buffs','prefixes','player','worldgen','markers','pixel','map','locales','ids'];
+const familyLabels = {items:'物品',tiles:'方块',walls:'墙壁',paints:'油漆与涂层',npcs:'生物与图鉴',buffs:'增益与减益',prefixes:'前缀',player:'人物与装备',worldgen:'世界生成',markers:'地图标记',pixel:'像素查找',map:'地图颜色',locales:'本地化',ids:'ID 常量'};
+const families = Object.keys(familyLabels);
+const stateLabels = {UPLOADED:'已接收',EXTRACTING:'检查中',READY_FOR_REVIEW:'待审核',BLOCKED:'已阻止',PUBLISHING:'发布中',PUBLISHED:'已发布',INTERRUPTED:'已中断'};
 let selected = null, selectedDigest = null, clientRelease = null, clientManifest = null;
-let publishing=false, clientEpoch=0, familyEpoch=0;
+let publishing=false, rawSubmitting=false, clientEpoch=0, familyEpoch=0, renderedJob=null;
 const cache = new Map();
 let cachedBytes = 0;
 async function api(path, options={}) {
@@ -14,24 +16,33 @@ async function api(path, options={}) {
 function status(id, text, error=false) { $(id).textContent=text; $(id).className=error?'error':'success'; }
 function node(tag, text, className) {const el=document.createElement(tag); if(text!==undefined)el.textContent=text; if(className)el.className=className;return el;}
 function renderReview(job) {
+  const renderKey=[job.id,job.state,job.reviewDigest,job.error,job.commit].join('|');
+  if(renderedJob===renderKey)return;renderedJob=renderKey;
+  $('raw-result').hidden=job.kind!=='raw-input-preflight';
+  if(job.kind==='raw-input-preflight'){
+    selectedDigest=null;$('confirm').checked=false;$('confirm').disabled=true;$('publish').disabled=true;
+    $('review').hidden=true;$('empty-review').hidden=false;$('empty-review').textContent='该任务仅检查真实输入；请查看下方来源与阻塞项';
+    renderRaw(job);return;
+  }
   $('empty-review').hidden=true;$('review').hidden=false;
   if(selectedDigest!==job.reviewDigest){$('confirm').checked=false;selectedDigest=job.reviewDigest;}
-  $('job-state').textContent=job.state;$('version').textContent=job.gameVersion||'';
+  $('job-state').textContent=`${stateLabels[job.state]||job.state} (${job.state})`;$('version').textContent=job.gameVersion||'';
   $('summary').replaceChildren();
   for(const [name,value] of [['输入文件',job.filename],['输入哈希',job.inputSha256],['输出版本',job.release||'待提取'],['对象总量',job.objectBytes===undefined?'待计算':`${job.objectBytes} 字节`],['Git 提交',job.commit||'尚未发布']]){
     $('summary').append(node('dt',name),node('dd',String(value)));
   }
   $('diff').replaceChildren();
   for(const [family,change] of Object.entries(job.diff||{})){
-    const row=node('tr');for(const value of [family,change.added.length,change.changed.length,change.removed.length])row.append(node('td',String(value)));$('diff').append(row);
+    const row=node('tr');for(const value of [familyLabels[family]||family,change.added.length,change.changed.length,change.removed.length])row.append(node('td',String(value)));$('diff').append(row);
   }
-  $('coverage').textContent=job.error||JSON.stringify(job.coverage||{},null,2);
+  $('coverage-summary').textContent=job.error||(!job.coverage?'正在检查输入…':`合成策略必需子项 ${job.coverage.verifiedRequired}/${job.coverage.requiredCount}；共 ${job.coverage.submanifestCount} 项。${job.coverage.complete?'合成合同校验通过，不代表真实游戏完整覆盖。':'存在缺失项，不能发布。'}`);
+  $('coverage').textContent=JSON.stringify(job.coverage||{error:job.error||null},null,2);
   $('confirm').disabled=job.state!=='READY_FOR_REVIEW';
   $('publish').disabled=publishing||job.state!=='READY_FOR_REVIEW'||!$('confirm').checked;
 }
 async function refreshJobs(){
   const jobs=await api('/api/jobs');$('jobs').replaceChildren();
-  for(const job of jobs){const button=node('button',`${job.filename} · ${job.state}`,'job');button.onclick=()=>{selected=job.id;selectedDigest=null;renderReview(job);};$('jobs').append(button);}
+  for(const job of jobs){const button=node('button',`${job.filename} · ${stateLabels[job.state]||job.state}`,'job');button.onclick=()=>{selected=job.id;selectedDigest=null;renderedJob=null;renderReview(job);};$('jobs').append(button);}
   const current=jobs.find(job=>job.id===selected);if(current)renderReview(current);
 }
 $('upload').onsubmit=async event=>{
@@ -40,6 +51,25 @@ $('upload').onsubmit=async event=>{
   status('upload-status','正在上传并排队提取…');
   try{const form=new FormData();form.append('file',file);const job=await api('/api/jobs',{method:'POST',body:form});selected=job.id;selectedDigest=null;status('upload-status','已接收，请查看审核面板');await refreshJobs();}
   catch(error){status('upload-status',error.message,true);}finally{button.disabled=false;}
+};
+function renderRaw(job){
+  $('raw-blockers').replaceChildren();$('raw-sources').replaceChildren();
+  status('raw-upload-status',`${stateLabels[job.state]||job.state} · 仅检查来源，未执行或发布`,job.state==='BLOCKED'||job.state==='INTERRUPTED');
+  for(const blocker of job.blockers||[])$('raw-blockers').append(node('li',blocker.message));
+  for(const [role,source] of Object.entries(job.sources||{})){
+    const article=node('article',undefined,'raw-source');article.append(node('h3',role==='server'?'服务端来源':'客户端 Content 来源'));
+    const list=node('dl');const version=source.versionEvidence;
+    for(const [label,value] of [['文件',source.filename],['ZIP SHA-256',source.archiveSha256],['上传体积',`${source.archiveBytes} 字节`],['可信版本',version?.status==='verified'?version.gameVersion:'未验证'],['文件清单',source.inventory?`${source.inventory.fileCount??source.inventory.files?.length??0} 个文件，展开 ${source.inventory.expandedBytes} 字节`:'尚无有效清单']])list.append(node('dt',label),node('dd',value));
+    article.append(list);const details=node('details'),summary=node('summary','展开逐文件 SHA-256 与调试详情'),pre=node('pre','展开后读取完整清单');details.append(summary,pre);
+    details.ontoggle=async()=>{if(!details.open||details.dataset.loaded)return;details.dataset.loaded='loading';try{const full=await api(`/api/jobs/${job.id}`);pre.textContent=JSON.stringify(full.sources[role],null,2);details.dataset.loaded='yes';}catch(error){pre.textContent=error.message;delete details.dataset.loaded;}};
+    article.append(details);$('raw-sources').append(article);
+  }
+}
+$('raw-upload').onsubmit=async event=>{
+  event.preventDefault();if(rawSubmitting)return;rawSubmitting=true;const button=event.currentTarget.querySelector('button');button.disabled=true;
+  status('raw-upload-status','正在上传并排队检查两份来源…');
+  try{const form=new FormData();for(const [field,id] of [['server_file','server-file'],['client_file','client-file']]){const file=$(id).files[0];if(file)form.append(field,file);}if($('declared-version').value.trim())form.append('declared_version',$('declared-version').value.trim());const job=await api('/api/raw-jobs',{method:'POST',body:form});selected=job.id;selectedDigest=null;renderedJob=null;await refreshJobs();}
+  catch(error){status('raw-upload-status',error.message,true);}finally{rawSubmitting=false;button.disabled=false;}
 };
 $('confirm').onchange=()=>{$('publish').disabled=publishing||!$('confirm').checked;};
 $('publish').onclick=async()=>{
@@ -81,7 +111,7 @@ $('refresh-client').onclick=async()=>{
     status('client-status',`已验证版本 ${candidate.gameVersion} · ${clientRelease.slice(0,12)}，资源按需加载`);
   }catch(error){if(epoch===clientEpoch)status('client-status',`${error.message}；保留原版本`,true);}
 };
-for(const family of families){const option=node('option',family);option.value=family;$('family').append(option);}
+for(const family of families){const option=node('option',familyLabels[family]);option.value=family;$('family').append(option);}
 $('load-family').onclick=async()=>{
   if(!clientManifest){status('client-status','请先检查CDN更新',true);return;}
   const snapshot=clientManifest,release=clientRelease,epoch=++familyEpoch;

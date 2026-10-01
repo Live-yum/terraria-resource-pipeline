@@ -32,6 +32,12 @@ python -m unittest discover -s tests -v
 node --check web/app.js && node --check web/cache.js
 ```
 
+## 真实输入配对预检
+
+页面另有服务端 ZIP / 客户端 Content ZIP 双上传入口，记录各来源真实 SHA-256 与安全文件清单，按两包合计执行上传、解包和条目限额。缺少客户端、版本未验证、版本不符和缺少可信适配器会显示明确中文阻塞项。原始 ZIP 不执行、不发布，也不会回退为合成成功。
+
+版本提示与包内元数据不作为证明；默认未登记真实来源哈希、未接入真实生产器。即使操作者登记了同版本源包，当前入口也只做预检。详见 [双来源预检](docs/RAW-PREFLIGHT.zh-CN.md) 和 [资源设计与真实验收](docs/RESOURCE-DESIGN.zh-CN.md)。
+
 ## 静态程序集检查器
 
 `tools/AssemblyInspector` 使用 .NET `PEReader` 与 `System.Reflection.Metadata`，只读取 ID 常量和中英嵌入本地化 JSON，不执行类型初始化或上传代码。公开 CI 用带抛异常初始化器的原创合成程序集证明这一点。
