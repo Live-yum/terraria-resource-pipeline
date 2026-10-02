@@ -20,6 +20,7 @@ import tempfile
 import zlib
 
 from .contracts import REQUIRED_SUBMANIFESTS
+from .locale_semantics import REFERENCE as LOCALE_REFERENCE, embedded_baselines
 from .security import PipelineError, canonical_json
 
 
@@ -108,7 +109,9 @@ class _Reader:
 
 
 class _Metadata:
-    def __init__(self, data: bytes, limits: SemanticLimits):
+    def __init__(self, data: bytes, limits: SemanticLimits, checkpoint=None):
+        self.checkpoint = checkpoint or (lambda: None)
+        self.checkpoint()
         self.limits = limits
         self.reader = r = _Reader(data)
         if r.take(0, 2) != b'MZ':
@@ -132,6 +135,7 @@ class _Metadata:
         self.sections = []
         base = optional.end
         for number in range(sections):
+            self.checkpoint()
             entry = base + number * 40
             raw_size, raw_offset = r.uint(entry + 16, 4), r.uint(entry + 20, 4)
             virtual_size, virtual_address = r.uint(entry + 8, 4), r.uint(entry + 12, 4)
@@ -163,6 +167,7 @@ class _Metadata:
         self.streams = {}
         spans = []
         for _ in range(stream_count):
+            self.checkpoint()
             offset, size = meta.uint(position, 4), meta.uint(position + 4, 4)
             name_start = position + 8
             name_end = data.find(b'\x00', name_start, min(meta.end, name_start + 32))
@@ -205,6 +210,7 @@ class _Metadata:
             raise PipelineError('Pointer tables are unsupported in optimized metadata')
         self.layout = {}
         for index, columns in _TABLES.items():
+            self.checkpoint()
             widths = tuple(self.width(column) for column in columns)
             row_size = sum(widths)
             tables.take(position, row_size * self.rows[index])
@@ -234,6 +240,7 @@ class _Metadata:
         return 4 if max(self.rows[x] for x in tables) >= (1 << (16 - bits)) else 2
 
     def row(self, table: int, rid: int) -> tuple[tuple[int, ...], int]:
+        self.checkpoint()
         if not 1 <= rid <= self.rows[table]:
             raise PipelineError('CLI table reference is out of bounds')
         start, size, widths = self.layout[table]
@@ -291,7 +298,7 @@ def _types(meta: _Metadata) -> dict[int, dict]:
             raise PipelineError('Invalid TypeDef field range')
         previous_field = row[4]
         output[rid] = {'name': meta.string(row[1]), 'namespace': meta.string(row[2]),
-                       'firstField': row[4], 'metadataOffset': offset}
+                       'firstField': row[4], 'firstMethod': row[5], 'metadataOffset': offset}
     def resolve(rid, visited):
         if len(visited) >= 64 or rid in visited:
             raise PipelineError('Cyclic or oversized nested type relationship')
@@ -303,7 +310,45 @@ def _types(meta: _Metadata) -> dict[int, dict]:
     for rid in output:
         resolve(rid, set())
         output[rid]['lastField'] = output[rid + 1]['firstField'] if rid < len(output) else meta.rows[4] + 1
+        output[rid]['lastMethod'] = output[rid + 1]['firstMethod'] if rid < len(output) else meta.rows[6] + 1
+        if not 1 <= output[rid]['firstMethod'] <= output[rid]['lastMethod'] <= meta.rows[6] + 1:
+            raise PipelineError('Invalid TypeDef method range')
     return output
+
+
+def _loader_methods(meta: _Metadata, types: dict) -> list:
+    """Method-body digests/offsets for later equivalence review, never execution."""
+    result = []
+    for typedef in types.values():
+        if not (typedef['fullName'].startswith('Terraria.Localization.LanguageManager') or
+                typedef['fullName'] in ('Terraria.Localization.GameCulture', 'Terraria.Localization.LocalizedText')):
+            continue
+        for rid in range(typedef['firstMethod'], typedef['lastMethod']):
+            row, metadata_offset = meta.row(6, rid)
+            name = meta.string(row[3])
+            if row[0] == 0:
+                continue
+            body = meta.rva(row[0], 1)
+            first = meta.reader.uint(body, 1)
+            if first & 3 == 2:
+                header_size, code_size = 1, first >> 2
+            elif first & 3 == 3:
+                header_size = (meta.reader.uint(body, 2) >> 12) * 4
+                if header_size < 12 or header_size > 60:
+                    raise PipelineError('Invalid CLI method header size')
+                code_size = meta.reader.uint(body + 4, 4)
+            else:
+                result.append({'methodMetadataOffset': metadata_offset, 'status': 'UNSUPPORTED_METHOD_HEADER'})
+                continue
+            if code_size > 1024 * 1024:
+                raise PipelineError('CLI loader method body exceeds limit')
+            code_offset = meta.rva(row[0] + header_size, code_size)
+            code = meta.reader.take(code_offset, code_size)
+            result.append({'type': typedef['fullName'], 'method': name,
+                           'metadataToken': f'0x{0x06000000 | rid:08x}', 'methodMetadataOffset': metadata_offset,
+                           'bodyOffset': body, 'codeOffset': code_offset, 'codeBytes': code_size,
+                           'codeSha256': hashlib.sha256(code).hexdigest(), 'status': 'HASHED_NOT_EXECUTED'})
+    return result
 
 
 def _constant(meta: _Metadata, kind: int, blob_index: int):
@@ -373,6 +418,21 @@ def _id_constants(meta: _Metadata, types: dict) -> tuple[dict, dict, list, list]
     return ids, evidence, unsupported, versions
 
 
+class _ResourceBudgetError(PipelineError):
+    pass
+
+
+class _LocaleObject(dict):
+    """Json.NET typed dictionary assignment order, with every original pair."""
+    def __init__(self, pairs):
+        super().__init__()
+        self.pairs = pairs
+        self.selected_ordinals = {}
+        for ordinal, (key, value) in enumerate(pairs):
+            self[key] = value
+            self.selected_ordinals[key] = ordinal
+
+
 def _json_document(payload: bytes, limits: SemanticLimits) -> dict:
     """JSON with only comments/trailing commas allowed; no JS or object hooks."""
     text = payload.decode('utf-8-sig', errors='strict')
@@ -407,7 +467,7 @@ def _json_document(payload: bytes, limits: SemanticLimits) -> dict:
         elif char in ('{', '['):
             depth += 1
             if depth > limits.json_depth:
-                raise PipelineError('Localization JSON nesting exceeds limit')
+                raise _ResourceBudgetError('Localization JSON nesting exceeds limit')
         elif char in ('}', ']'):
             depth -= 1
             previous = index - 1
@@ -416,13 +476,13 @@ def _json_document(payload: bytes, limits: SemanticLimits) -> dict:
             if previous >= 0 and chars[previous] == ',':
                 chars[previous] = ' '
         index += 1
+    parsed_keys = 0
     def object_pairs(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise PipelineError('Duplicate localization JSON key')
-            result[key] = value
-        return result
+        nonlocal parsed_keys
+        parsed_keys += len(pairs)
+        if parsed_keys > limits.locale_keys:
+            raise _ResourceBudgetError('Localization JSON key count exceeds limit')
+        return _LocaleObject(pairs)
     def reject_constant(_):
         raise PipelineError('Non-finite localization JSON value')
     result = json.loads(''.join(chars), object_pairs_hook=object_pairs, parse_constant=reject_constant)
@@ -431,26 +491,59 @@ def _json_document(payload: bytes, limits: SemanticLimits) -> dict:
     return result
 
 
-def _flatten_locale(document: dict, limits: SemanticLimits) -> dict[str, str]:
-    output = {}
-    stack = [('', document)]
-    while stack:
-        prefix, node = stack.pop()
-        for key, value in node.items():
-            name = prefix + '.' + key if prefix else key
-            if not key or len(name) > limits.string_bytes:
+def _flatten_locale(document: dict, limits: SemanticLimits) -> tuple[dict[str, str], list, list, dict]:
+    """The pinned loader deserializes Dictionary<string,Dictionary<string,string>>.
+
+    Later duplicate dictionary assignments replace earlier ones. They are input
+    semantics only: our emitted JSON still has unique keys and canonical form.
+    """
+    diagnostics, identical, evidence, output = [], [], {}, {}
+    def pointer(parts):
+        return '/' + '/'.join(part.replace('~', '~0').replace('/', '~1') for part in parts)
+    def duplicates(node, path, parent_ordinals):
+        occurrences = {}
+        for ordinal, (key, value) in enumerate(node.pairs):
+            occurrences.setdefault(key, []).append((ordinal, value))
+        for key, entries in occurrences.items():
+            if len(entries) < 2:
+                continue
+            chosen = entries[-1][1]
+            equal = all(isinstance(value, str) and value == chosen for _, value in entries)
+            row = {'key': '.'.join((*path, key)), 'jsonPointer': pointer((*path, key)),
+                   'parentOrdinals': parent_ordinals, 'occurrences': len(entries),
+                   'occurrenceOrdinals': [ordinal for ordinal, _ in entries],
+                   'valueSha256s': [hashlib.sha256(canonical_json(value)).hexdigest() for _, value in entries],
+                   'selectedOrdinal': entries[-1][0], 'rule': 'Json.NET-typed-dictionary-last-assignment',
+                   'reason': 'duplicate-json-key-identical' if equal else 'duplicate-json-key-resolved-last'}
+            (identical if equal else diagnostics).append(row)
+    duplicates(document, (), [])
+    # Typed deserialization parses all values, even overwritten categories.
+    for category_ordinal, (category, entries) in enumerate(document.pairs):
+        if not isinstance(entries, _LocaleObject):
+            raise PipelineError('Localization category must be a string dictionary')
+        duplicates(entries, (category,), [category_ordinal])
+        for name, value in entries.pairs:
+            if not isinstance(value, str):
+                raise PipelineError('Unsupported non-string typed localization value')
+            if not category or not name or len(category + '.' + name) > limits.string_bytes:
                 raise PipelineError('Invalid or oversized localization key')
-            if isinstance(value, dict):
-                stack.append((name, value))
-            elif isinstance(value, str):
-                if name in output:
-                    raise PipelineError('Ambiguous flattened localization key')
-                output[name] = value
-                if len(output) > limits.locale_keys:
-                    raise PipelineError('Localization key count exceeds limit')
-            else:
-                raise PipelineError('Unsupported non-string localization value')
-    return dict(sorted(output.items()))
+    for category, entries in document.items():
+        for name, value in entries.items():
+            key = category + '.' + name
+            if key in output:
+                # A dotted category/name can collide after concatenation; the
+                # game's UpdateTextValue follows category/item iteration order.
+                diagnostics.append({'key': key, 'jsonPointer': pointer((category, name)),
+                                    'occurrences': 2, 'rule': 'LanguageManager-iteration-last-update',
+                                    'reason': 'concatenated-key-resolved-last'})
+            output[key] = value
+            evidence[key] = {'jsonPointer': pointer((category, name)),
+                             'categoryOrdinal': document.selected_ordinals[category],
+                             'propertyOrdinal': entries.selected_ordinals[name],
+                             'valueSha256': hashlib.sha256(value.encode('utf-8')).hexdigest()}
+            if len(output) > limits.locale_keys:
+                raise _ResourceBudgetError('Localization key count exceeds limit')
+    return output, diagnostics, identical, evidence
 
 
 def _decode_resource(payload: bytes, name: str, limits: SemanticLimits) -> tuple[bytes, str]:
@@ -466,15 +559,22 @@ def _decode_resource(payload: bytes, name: str, limits: SemanticLimits) -> tuple
     decoder = zlib.decompressobj(window)
     result = decoder.decompress(payload, limits.resource_file_bytes + 1)
     if len(result) > limits.resource_file_bytes or decoder.unconsumed_tail:
-        raise PipelineError('Localization decompression exceeds limit')
+        raise _ResourceBudgetError('Localization decompression exceeds limit')
     result += decoder.flush(limits.resource_file_bytes + 1 - len(result))
-    if len(result) > limits.resource_file_bytes or not decoder.eof or decoder.unused_data:
-        raise PipelineError('Incomplete, concatenated, or oversized compressed resource')
+    if len(result) > limits.resource_file_bytes:
+        raise _ResourceBudgetError('Localization decompression exceeds limit')
+    if not decoder.eof or decoder.unused_data:
+        raise PipelineError('Incomplete or concatenated compressed resource')
     return result, compression
 
 
-def _languages(meta: _Metadata) -> tuple[dict, list, dict]:
-    languages, inventory, locales = {}, [], {}
+def _languages(meta: _Metadata) -> tuple[dict, list, dict, dict, dict]:
+    if meta.rows[40] > 4096:
+        raise PipelineError('Manifest resource count exceeds limit')
+    languages, inventory, locales, ambiguous = {}, [], {}, {}
+    seen_locale_keys = {}
+    identical = {}
+    budget_exhausted = False
     decoded_total = key_total = 0
     names = set()
     for rid in range(1, meta.rows[40] + 1):
@@ -508,26 +608,44 @@ def _languages(meta: _Metadata) -> tuple[dict, list, dict]:
             inventory.append(item)
             continue
         language = match.group(1)
+        meta.checkpoint()
+        if budget_exhausted:
+            item.update(status='SKIPPED_RESOURCE_BUDGET', language=language, errorCode='RESOURCE_BUDGET_EXHAUSTED')
+            inventory.append(item)
+            continue
         try:
             decoded, compression = _decode_resource(payload, name, meta.limits)
             decoded_total += len(decoded)
             if decoded_total > meta.limits.decoded_total_bytes:
-                raise PipelineError('Total localization decoded bytes exceed limit')
-            flat = _flatten_locale(_json_document(decoded, meta.limits), meta.limits)
-            key_total += len(flat)
+                raise _ResourceBudgetError('Total localization decoded bytes exceed limit')
+            flat, local_ambiguity, local_identical, key_evidence = _flatten_locale(_json_document(decoded, meta.limits), meta.limits)
+            key_total += len(flat) + sum(row['occurrences'] for row in local_ambiguity)
             if key_total > meta.limits.locale_keys:
-                raise PipelineError('Total localization key count exceeds limit')
-            duplicates = set(locales.setdefault(language, {})) & set(flat)
-            if duplicates:
-                raise PipelineError('Duplicate localization key across resources')
-            locales[language].update(flat)
-            item.update(status='EXTRACTED', language=language, compression=compression,
+                raise _ResourceBudgetError('Total localization key count exceeds limit')
+            merged = locales.setdefault(language, {})
+            seen_keys = seen_locale_keys.setdefault(language, set())
+            duplicates = seen_keys & set(flat)
+            merged.update(flat)
+            seen_keys.update(flat)
+            identical.setdefault(language, []).extend({**row, 'resource': name} for row in local_identical)
+            diagnostics = ambiguous.setdefault(language, [])
+            diagnostics.extend({**row, 'resource': name} for row in local_ambiguity)
+            diagnostics.extend({'key': key, 'resource': name, 'reason': 'duplicate-key-across-resources-resolved-last',
+                                'rule': 'LanguageManager-ManifestResource-order',
+                                'occurrences': 2} for key in sorted(duplicates))
+            item.update(status='EXTRACTED_WITH_GAPS' if local_ambiguity or duplicates else 'EXTRACTED',
+                        language=language, compression=compression, ambiguousKeyCount=len(local_ambiguity) + len(duplicates),
+                        identicalDuplicateKeyCount=len(local_identical),
                         decodedBytes=len(decoded), decodedSha256=hashlib.sha256(decoded).hexdigest(), keyCount=len(flat))
-            languages[name] = {'language': language, 'strings': flat, 'evidence': dict(item)}
-        except (UnicodeError, json.JSONDecodeError, zlib.error) as exc:
-            raise PipelineError('Malformed localization resource') from exc
+            languages[name] = {'language': language, 'strings': flat, 'duplicateKeys': local_ambiguity, 'keyEvidence': key_evidence, 'evidence': dict(item)}
+        except _ResourceBudgetError:
+            budget_exhausted = True
+            item.update(status='REJECTED_RESOURCE', language=language, errorCode='RESOURCE_BUDGET_EXHAUSTED')
+        except (PipelineError, UnicodeError, json.JSONDecodeError, zlib.error, RecursionError):
+            item.update(status='REJECTED_RESOURCE', language=language, errorCode='MALFORMED_OR_UNSUPPORTED_LOCALIZATION')
+        meta.checkpoint()
         inventory.append(item)
-    return languages, inventory, locales
+    return languages, inventory, locales, ambiguous, identical
 
 
 def _coverage(ids: dict, unsupported: list, locales: dict) -> dict:
@@ -551,12 +669,14 @@ def _coverage(ids: dict, unsupported: list, locales: dict) -> dict:
     return families
 
 
-def extract_server_semantics(input_path: Path, limits: SemanticLimits = SemanticLimits()) -> dict:
+def extract_server_semantics(input_path: Path, limits: SemanticLimits = SemanticLimits(), checkpoint=None) -> dict:
     """Return immutable-file-derived evidence; never infer complete semantics.
 
     The binary's own assembly version is a declaration, not authentication. The
     caller must separately verify operator pins before trusting input identity.
     """
+    checkpoint = checkpoint or (lambda: None)
+    checkpoint()
     path = Path(input_path)
     if any(part.is_symlink() for part in (path, *path.parents)):
         raise PipelineError('Server input cannot traverse symlinks')
@@ -565,19 +685,34 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
         before = os.fstat(source.fileno())
         if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= limits.input_bytes:
             raise PipelineError('Server input must be a bounded regular file')
-        data = source.read(limits.input_bytes + 1)
+        chunks = []
+        read_bytes = 0
+        while True:
+            checkpoint()
+            chunk = source.read(min(1024 * 1024, limits.input_bytes - read_bytes + 1))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            read_bytes += len(chunk)
+            if read_bytes > limits.input_bytes:
+                raise PipelineError('Server input grew past its byte limit')
+        data = b''.join(chunks)
         after = os.fstat(source.fileno())
     if len(data) != before.st_size or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
         raise PipelineError('Server input changed during static inspection')
     try:
-        meta = _Metadata(data, limits)
+        meta = _Metadata(data, limits, checkpoint=checkpoint)
         if meta.rows[32] != 1:
             raise PipelineError('Input must contain exactly one CLI assembly definition')
         assembly, assembly_offset = meta.row(32, 1)
         version = '.'.join(str(number) for number in assembly[1:5])
         assembly_name = meta.string(assembly[7])
-        ids, evidence, unsupported, version_fields = _id_constants(meta, _types(meta))
-        languages, resources, locales = _languages(meta)
+        types = _types(meta)
+        ids, evidence, unsupported, version_fields = _id_constants(meta, types)
+        loader_methods = _loader_methods(meta, types)
+        languages, resources, locales, ambiguous, identical = _languages(meta)
+        baselines = embedded_baselines(languages, resources, checkpoint=checkpoint)
+        checkpoint()
     except PipelineError:
         raise
     except (UnicodeError, struct.error, ValueError, RecursionError) as exc:
@@ -617,13 +752,18 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
     version_evidence = {'status': 'DECLARED_IN_ASSEMBLY', 'trusted': False,
                         'method': 'CLI-Assembly-table', 'assemblyMetadataOffset': assembly_offset,
                         'versionFileOffset': assembly_offset + 4, 'literalFields': version_fields}
+    checkpoint()
     return {'schemaVersion': 1, 'extractor': 'static-pe-cli-python-v1',
             'status': 'PARTIAL', 'executedInput': False, 'complete': False, 'publishable': False,
             'inputSha256': hashlib.sha256(data).hexdigest(), 'inputBytes': len(data),
             'input': {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)},
             'assembly': {'name': assembly_name, 'version': version, 'metadataOffset': assembly_offset},
             'gameVersionEvidence': version_evidence, 'idFamilies': id_families,
-            'localization': {locale: {'strings': dict(sorted(rows.items())),
+            'loaderMethodEvidence': loader_methods,
+            'localeRuleEvidence': {**LOCALE_REFERENCE, 'binaryLoaderEquivalenceVerified': False,
+                                   'jsonNetEmbeddedReferenceMatch': any(row.get('sha256') == LOCALE_REFERENCE['jsonNetReferenceSha256'] for row in resources)},
+            'localization': {locale: {'strings': baselines[locale]['strings'], 'rawStrings': dict(sorted(rows.items())),
+                                     'baseline': baselines[locale],
                                      'resources': [row for row in resources if row.get('language') == locale]}
                              for locale, rows in sorted(locales.items())},
             'assemblyName': assembly_name, 'gameVersion': version,
@@ -636,8 +776,11 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
             'localeDiagnostics': {'englishKeys': len(english), 'chineseKeys': len(chinese),
                                   'missingChineseKeys': sorted(set(english) - set(chinese)),
                                   'missingEnglishKeys': sorted(set(chinese) - set(english)),
-                                  'unresolvedReferences': references,
-                                  'fallbackEvaluated': False, 'interpolationEvaluated': False},
+                                  'unresolvedReferences': references, 'ambiguousKeys': ambiguous,
+                                  'identicalDuplicateKeys': identical, 'duplicateSelectionEvidence': ambiguous,
+                                  'fallbackEvaluated': True, 'copyCommandsEvaluated': True,
+                                  'interpretation': 'pinned-reference-source-model',
+                                  'binaryLoaderEquivalenceVerified': False, 'interpolationEvaluated': False},
             'coverage': _coverage(ids, unsupported, locales),
             'unsupported': ['runtime-item-defaults', 'resolved-dynamic-tooltips', 'map-runtime-rules',
                             'client-textures', 'player-draw-rules', 'worldgen-runtime-rules',

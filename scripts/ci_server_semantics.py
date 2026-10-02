@@ -57,7 +57,13 @@ def redact(result: dict) -> dict:
             raise PipelineError('Unexpected locale identifier')
         strings = value['strings']
         locales[locale] = {
-            'keyCount': len(strings),
+            'keyCount': len(strings), 'rawKeyCount': len(value['rawStrings']),
+            'fallbackKeyCount': len(value['baseline']['fallbackKeys']),
+            'variantCount': len(value['baseline']['variants']),
+            'sourceModelStatus': value['baseline']['status'],
+            'modelErrorCount': len(value['baseline']['loadErrors']) + sum(len(row['errors']) for row in value['baseline']['copyPasses']),
+            'missingReferenceCount': sum(len(row['missingReferences']) for row in value['baseline']['copyPasses']),
+            'copyExpandedKeyCount': sum(len(row['copyEvidence']) for row in value['baseline']['copyPasses']),
             'contentSha256': hashlib.sha256(canonical_json(strings)).hexdigest(),
             'keyValueSamples': [{'keySha256': digest_text(key), 'valueSha256': digest_text(text),
                                  'valueUtf8Bytes': len(text.encode('utf-8'))}
@@ -67,8 +73,11 @@ def redact(result: dict) -> dict:
                            'sha256': row['sha256'], 'decodedBytes': row['decodedBytes'],
                            'decodedSha256': row['decodedSha256'],
                            'compression': row['compression'], 'keyCount': row['keyCount'],
+                           'ambiguousKeyCount': row['ambiguousKeyCount'],
+                           'identicalDuplicateKeyCount': row['identicalDuplicateKeyCount'],
                            'manifestResourceToken': row['manifestResourceToken'],
-                           'metadataOffset': row['metadataOffset']} for row in value['resources']],
+                           'metadataOffset': row['metadataOffset']} for row in value['resources']
+                          if row['status'] in ('EXTRACTED', 'EXTRACTED_WITH_GAPS')],
             'complete': False,
         }
     statuses = {}
@@ -81,6 +90,15 @@ def redact(result: dict) -> dict:
         'source': {'repository': SOURCE_REPOSITORY, 'commit': SOURCE_COMMIT, 'path': SOURCE_PATH,
                    'gitBlobSha1': SOURCE_BLOB, **result['input']},
         'assemblyVersion': version,
+        'localeRuleEvidence': result['localeRuleEvidence'],
+        'loaderMethodEvidence': [{'methodNameSha256': digest_text(row.get('type','') + '.' + row.get('method','')),
+                                  **{key: value for key,value in row.items() if key not in ('type','method')}}
+                                 for row in result['loaderMethodEvidence']],
+        'duplicateSelectionEvidence': {locale: [{'pathSha256': digest_text(row.get('jsonPointer',row['key'])),
+                                                  'resourceNameSha256': digest_text(row['resource']),
+                                                  **{key: row[key] for key in ('occurrences','occurrenceOrdinals','selectedOrdinal','valueSha256s','rule') if key in row}}
+                                               for row in rows]
+                                       for locale,rows in result['localeDiagnostics']['duplicateSelectionEvidence'].items()},
         'versionEvidence': {'status': 'DECLARED_IN_ASSEMBLY', 'trusted': False,
                             'method': 'CLI-Assembly-table',
                             'versionFileOffset': result['gameVersionEvidence']['versionFileOffset'],
@@ -94,8 +112,14 @@ def redact(result: dict) -> dict:
         'unsupportedFieldCount': len(result['unsupportedFields']),
         'families': families, 'locales': locales,
         'resourceStatusCounts': statuses,
+        'resourceDiagnostics': [{'nameSha256': digest_text(row['name']), 'status': row['status'],
+                                 'metadataOffset': row['metadataOffset'],
+                                 **{key: row[key] for key in ('dataOffset', 'bytes', 'sha256', 'errorCode') if key in row}}
+                                for row in result['resources'] if row['status'] not in ('EXTRACTED', 'EXTRACTED_WITH_GAPS')],
         'localeDiagnostics': {'missingChineseCount': len(result['localeDiagnostics']['missingChineseKeys']),
                               'missingEnglishCount': len(result['localeDiagnostics']['missingEnglishKeys']),
+                              'identicalDuplicateKeyCounts': {name: len(rows) for name, rows in result['localeDiagnostics']['identicalDuplicateKeys'].items()},
+                              'ambiguousKeyCounts': {name: len(rows) for name, rows in result['localeDiagnostics']['ambiguousKeys'].items()},
                               'unresolvedReferenceCounts': {name: len(rows) for name, rows in result['localeDiagnostics']['unresolvedReferences'].items()},
                               'runtimeFallbackEvaluated': False, 'runtimeInterpolationEvaluated': False},
         'gaps': {family: row['gaps'] for family, row in result['coverage'].items()},
@@ -126,6 +150,7 @@ def run(source_root: Path, output: Path) -> dict:
     proof = redact(result)
     proof['inputUnchanged'] = True
     proof['parserSha256'] = hashlib.sha256((Path(__file__).resolve().parents[1] / 'src/resource_pipeline/server_semantics.py').read_bytes()).hexdigest()
+    proof['localeModelSha256'] = hashlib.sha256((Path(__file__).resolve().parents[1] / 'src/resource_pipeline/locale_semantics.py').read_bytes()).hexdigest()
     proof['pipelineCommit'] = os.environ.get('PINNED_PIPELINE_COMMIT', '')
     if not re.fullmatch(r'[a-f0-9]{40}', proof['pipelineCommit']):
         raise PipelineError('Missing pinned pipeline checkout commit')

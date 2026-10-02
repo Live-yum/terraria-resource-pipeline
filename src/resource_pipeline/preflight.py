@@ -15,10 +15,13 @@ import re
 import shutil
 from typing import BinaryIO
 import uuid
+import time
+from contextlib import ExitStack
 import zipfile
 
 from .contracts import package_file
-from .security import ArchiveLimits, PipelineError, extract_zip
+from .security import ArchiveLimits, PipelineError, extract_zip, atomic_write
+from .adapters import file_digest
 
 
 @dataclass(frozen=True)
@@ -97,11 +100,58 @@ class RawInputPreflight:
             shutil.rmtree(directory)
             raise
 
+    def request_cancel(self, identity: str) -> dict:
+        job = self.pipeline.get(identity)
+        if job.get("kind") != "raw-input-preflight" or job["state"] not in {"UPLOADED", "EXTRACTING"}:
+            raise PipelineError("Only an active raw-input job can be canceled")
+        atomic_write(self.pipeline.root / "jobs" / job["id"] / "cancel.request", b"1")
+        return {"id": job["id"], "cancelRequested": True, "state": job["state"]}
+
+    def retry(self, identity: str) -> dict:
+        job = self.pipeline.get(identity)
+        if job.get("kind") != "raw-input-preflight" or job["state"] not in {"BLOCKED", "CANCELED", "INTERRUPTED"}:
+            raise PipelineError("Only an incomplete terminal raw-input job can be retried")
+        directory = self.pipeline.root / "jobs" / job["id"]
+        with ExitStack() as stack:
+            uploads = {}
+            for role, source in job["sources"].items():
+                path = package_file(directory, f"{role}.zip")
+                if path.stat().st_size != source["archiveBytes"] or file_digest(path, self.limits.archive_bytes) != source["archiveSha256"]:
+                    raise PipelineError("Retry source fingerprint changed")
+                uploads[role + "_file"] = (stack.enter_context(path.open("rb")), source["filename"])
+            return self.submit(**uploads, declared_version=job["declaredVersion"])
+
     @staticmethod
     def _block(code: str, message: str, role: str | None = None) -> dict:
         return {"code": code, "message": message, **({"role": role} if role else {})}
 
     def process(self, identity: str) -> dict:
+        try:
+            return self._process(identity)
+        except BaseException as failure:
+            # A launch, disk, or unexpected parser failure must not leave an
+            # unretryable EXTRACTING record. Never expose exception text/paths.
+            try:
+                job = self.pipeline.get(identity)
+            except (KeyError, OSError):
+                raise failure
+            if job.get("kind") != "raw-input-preflight" or job.get("state") != "EXTRACTING":
+                raise
+            directory = self.pipeline.root / "jobs" / job["id"]
+            for role in ("server", "client"):
+                shutil.rmtree(directory / f"{role}-texture-job", ignore_errors=True)
+            shutil.rmtree(directory / "adapter-evidence", ignore_errors=True)
+            job.pop("producerEvidence", None)
+            code = "RAW_PROCESSING_FAILED" if isinstance(failure, Exception) else "RAW_PROCESSING_INTERRUPTED"
+            job.update(state="BLOCKED" if isinstance(failure, Exception) else "INTERRUPTED", textures={},
+                       extractionComplete=False, executedInput=False, error=code,
+                       blockers=[self._block(code, code)])
+            self.pipeline.save(job)
+            if not isinstance(failure, Exception):
+                raise
+            return job
+
+    def _process(self, identity: str) -> dict:
         with self.pipeline.lock:
             job = self.pipeline.get(identity)
             if job.get("kind") != "raw-input-preflight" or job["state"] != "UPLOADED":
@@ -110,8 +160,26 @@ class RawInputPreflight:
             self.pipeline.save(job)
             directory = self.pipeline.root / "jobs" / identity
             blockers = []
+            deadline = time.monotonic() + 120
+            canceled = lambda: (directory / "cancel.request").exists()
+            def checkpoint():
+                if canceled(): raise PipelineError("RAW_JOB_CANCELED")
+                if time.monotonic() >= deadline: raise PipelineError("RAW_JOB_TIMEOUT")
+            def stopped():
+                if not canceled() and time.monotonic() < deadline:
+                    return False
+                code = "RAW_JOB_CANCELED" if canceled() else "RAW_JOB_TIMEOUT"
+                for role in ("server", "client"):
+                    shutil.rmtree(directory / f"{role}-texture-job", ignore_errors=True)
+                shutil.rmtree(directory / "adapter-evidence", ignore_errors=True)
+                job.pop("producerEvidence", None)
+                job.update(state="CANCELED" if canceled() else "BLOCKED", textures={},
+                           extractionComplete=False, executedInput=False, blockers=[self._block(code, code)], error=code)
+                self.pipeline.save(job)
+                return True
             expanded = entries = 0
             for role in ("server", "client"):
+                if stopped(): return job
                 source = job["sources"].get(role)
                 if source is None:
                     blockers.append(self._block(f"MISSING_{role.upper()}_INPUT",
@@ -133,19 +201,18 @@ class RawInputPreflight:
                     actual_size = 0
                     with archive.open("rb") as raw:
                         while chunk := raw.read(1024 * 1024):
+                            checkpoint()
                             actual_size += len(chunk)
                             if actual_size > source["archiveBytes"]:
                                 raise PipelineError("上传后原始 ZIP 字节发生变化")
                             actual_hash.update(chunk)
                     if actual_size != source["archiveBytes"] or actual_hash.hexdigest() != source["archiveSha256"]:
                         raise PipelineError("上传后原始 ZIP 字节发生变化")
-                    with zipfile.ZipFile(archive) as package:
-                        count = len(package.infolist())
                     remaining = replace(self.limits, expanded_bytes=self.limits.expanded_bytes - expanded,
                                         files=self.limits.files - entries)
-                    inventory = extract_zip(archive, extracted, remaining)
+                    inventory = extract_zip(archive, extracted, remaining, checkpoint=checkpoint)
                     expanded += inventory["expandedBytes"]
-                    entries += count
+                    entries += inventory["entryCount"]
                     source["inventory"] = inventory
                     source["inventoryStatus"] = "verified"
                 except BaseException as exc:
@@ -166,6 +233,7 @@ class RawInputPreflight:
             # game code as a converter and never treat PNG reuse as this step.
             job["textures"] = {}
             for role, source in job["sources"].items():
+                if stopped(): return job
                 if source.get("inventoryStatus") != "verified":
                     continue
                 paths = source["inventory"]["files"]
@@ -177,8 +245,9 @@ class RawInputPreflight:
                     job["textures"][role] = {"status": "CONVERTER_NOT_INSTALLED", "xnbCount": count}
                 else:
                     try:
+                        options = {"cancel_check": canceled, "deadline": deadline} if getattr(self.texture_extractor, "supports_cancellation", False) else {}
                         job["textures"][role] = self.texture_extractor.extract(
-                            directory / f"{role}-files", directory / f"{role}-texture-job")
+                            directory / f"{role}-files", directory / f"{role}-texture-job", **options)
                     except PipelineError as exc:
                         job["textures"][role] = {"status": "BLOCKED", "error": str(exc),
                                                 "publishable": False}
@@ -188,6 +257,7 @@ class RawInputPreflight:
                     blockers = [blocker for blocker in blockers if blocker["code"] != "MISSING_CLIENT_INPUT"]
                     blockers.append(self._block("COMBINED_TEXTURE_SOURCE_UNVERIFIED",
                         "包内发现 XNB，可自动尝试解码；仍需验证原始客户端贴图来源、版本和覆盖，不能据此认定客户端资源完整"))
+            if stopped(): return job
             versions = {source["versionEvidence"]["gameVersion"] for source in job["sources"].values()
                         if source.get("versionEvidence", {}).get("status") == "verified"}
             if len(versions) > 1:
@@ -198,10 +268,11 @@ class RawInputPreflight:
                 roots = {role: directory / f"{role}-files" for role, source in job["sources"].items()
                          if source.get("inventoryStatus") == "verified"}
                 try:
-                    job["producerEvidence"] = self.semantic_producer.produce(roots, job["textures"], directory / "adapter-evidence")
+                    job["producerEvidence"] = self.semantic_producer.produce(roots, job["textures"], directory / "adapter-evidence", checkpoint=checkpoint)
                     blockers.append(self._block("SEMANTIC_COVERAGE_INCOMPLETE", "静态程序集与原始纹理证据已生成；完整属性、动态说明、帧及像素规则尚未核实，不能审核发布"))
                 except PipelineError:
                     blockers.append(self._block("SEMANTIC_PRODUCER_REJECTED", "真实语义生产器拒绝输入，未生成可审核候选"))
+            if stopped(): return job
             job.update(state="BLOCKED", blockers=blockers, extractedBytes=expanded,
                        archiveEntries=entries, executedInput=False, extractionComplete=False,
                        error="；".join(blocker["message"] for blocker in blockers))

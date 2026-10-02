@@ -21,7 +21,7 @@ try {
   string relative=Path.GetRelativePath(input,path),name=Path.ChangeExtension(relative,".png"),destination=Path.Combine(output,name);
   Directory.CreateDirectory(Path.GetDirectoryName(destination));byte[] png=Texture.Png(texture);
   using(var target=new FileStream(destination,FileMode.CreateNew))target.Write(png);
-  rows.Add(new{input=relative.Replace('\\','/'),output=name.Replace('\\','/'),sourceSha256=Hash(source),sha256=Hash(png),width=texture.Width,height=texture.Height,surfaceFormat=texture.SurfaceFormat});
+  rows.Add(new{input=relative.Replace('\\','/'),output=name.Replace('\\','/'),sourceSha256=Hash(source),sha256=Hash(png),width=texture.Width,height=texture.Height,surfaceFormat=texture.SurfaceFormat,mipLevels=texture.MipLevels,exportedMip=0});
  }
  File.WriteAllText(Path.Combine(output,"texture-report.json"),JsonSerializer.Serialize(new{schemaVersion=1,converter="tconvert-lzx-portable-texture-v1",imageCount=rows.Count,images=rows,skipped,executedInput=false,extractionComplete=false,publishable=false}));return 0;
 }catch(Exception ex){
@@ -29,7 +29,7 @@ try {
  Console.Error.WriteLine("Texture extraction rejected: "+ex.GetType().Name);return 1;
 }
 static string Hash(byte[] bytes)=>Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-record Pixels(int Width,int Height,byte[] Rgba,int SurfaceFormat);
+record Pixels(int Width,int Height,byte[] Rgba,int SurfaceFormat,int MipLevels);
 static class Texture {
  public static string Stage="INPUT";
  const int Max=128*1024*1024;
@@ -68,7 +68,7 @@ static class Texture {
   byte[] rgba=null;
   for(int mip=0;mip<mips;mip++){int mw=Math.Max(1,w>>mip),mh=Math.Max(1,h>>mip);long expected=format==0?(long)mw*mh*4:((long)(mw+3)/4)*((mh+3)/4)*(format==4?8:16);int n=r.ReadInt32();if(n!=expected)throw new InvalidDataException();byte[] data=Bytes(r,n);
    if(mip==0)rgba=format switch{0=>data,4=>DxtUtil.DecompressDxt1(data,w,h),5=>DxtUtil.DecompressDxt3(data,w,h),6=>DxtUtil.DecompressDxt5(data,w,h),_=>throw new InvalidDataException()};}
-  if(r.BaseStream.Position!=r.BaseStream.Length)throw new InvalidDataException();return new Pixels(w,h,rgba,format);
+  if(r.BaseStream.Position!=r.BaseStream.Length)throw new InvalidDataException();return new Pixels(w,h,rgba,format,mips);
  }
  static uint Crc(byte[] bytes){uint c=0xffffffff;foreach(byte b in bytes){c^=b;for(int i=0;i<8;i++)c=(c>>1)^((c&1)!=0?0xedb88320u:0);}return ~c;}
  public static byte[] Png(Pixels p){using var file=new MemoryStream();file.Write(new byte[]{137,80,78,71,13,10,26,10});

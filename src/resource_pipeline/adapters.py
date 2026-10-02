@@ -16,7 +16,7 @@ import stat
 import subprocess
 import sys
 import time
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .contracts import CoverageProfile, InputBinding, package_file, validate_contract
 from .models import ExtractionEnvelope
@@ -33,24 +33,45 @@ class AdapterLimits:
     processes: int = 64
 
 
-def file_digest(path: Path, maximum: int = 128 * 1024 * 1024) -> str:
+def file_digest(path: Path, maximum: int = 128 * 1024 * 1024, *,
+                checkpoint: Callable[[], None] | None = None) -> str:
+    if checkpoint is not None:
+        checkpoint()
     if path.is_symlink() or not path.is_file() or path.stat().st_size > maximum:
         raise PipelineError("Invalid or oversized regular input file")
     digest = hashlib.sha256()
+    size = 0
     with path.open("rb") as source:
-        while chunk := source.read(1024 * 1024):
+        while True:
+            if checkpoint is not None:
+                checkpoint()
+            chunk = source.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > maximum:
+                raise PipelineError("Invalid or oversized regular input file")
             digest.update(chunk)
+    if checkpoint is not None:
+        checkpoint()
     return digest.hexdigest()
 
 
-def tree_inventory(root: Path, limits: AdapterLimits = AdapterLimits()) -> list[dict]:
+def tree_inventory(root: Path, limits: AdapterLimits = AdapterLimits(), *,
+                   checkpoint: Callable[[], None] | None = None) -> list[dict]:
+    if checkpoint is not None:
+        checkpoint()
     if root.is_symlink() or not root.is_dir():
         raise PipelineError("Input/output root must be a regular directory")
     entries: list[dict] = []
     total = 0
     seen: set[str] = set()
     for directory, directories, files in os.walk(root, followlinks=False):
+        if checkpoint is not None:
+            checkpoint()
         for name in [*directories, *files]:
+            if checkpoint is not None:
+                checkpoint()
             path = Path(directory) / name
             relative = path.relative_to(root).as_posix()
             relative_path(relative)
@@ -66,13 +87,19 @@ def tree_inventory(root: Path, limits: AdapterLimits = AdapterLimits()) -> list[
                 total += size
                 if size > limits.file_bytes or total > limits.total_bytes:
                     raise PipelineError("Adapter tree exceeds its byte budget")
-                entries.append({"path": relative, "bytes": size, "sha256": file_digest(path, limits.file_bytes)})
+                entries.append({"path": relative, "bytes": size, "sha256": file_digest(path, limits.file_bytes, checkpoint=checkpoint)})
+    if checkpoint is not None:
+        checkpoint()
     return sorted(entries, key=lambda entry: entry["path"])
 
 
-def tree_digest(root: Path, limits: AdapterLimits = AdapterLimits()) -> str:
+def tree_digest(root: Path, limits: AdapterLimits = AdapterLimits(), *,
+                checkpoint: Callable[[], None] | None = None) -> str:
     """SHA256 of canonical [{path,bytes,sha256}], sorted by relative POSIX path."""
-    return sha256(canonical_json(tree_inventory(root, limits)))
+    result = sha256(canonical_json(tree_inventory(root, limits, checkpoint=checkpoint)))
+    if checkpoint is not None:
+        checkpoint()
+    return result
 
 
 @dataclass(frozen=True)
@@ -186,18 +213,36 @@ class BubblewrapSandbox:
         return CommandPlan(tuple(argv), job, {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}, "bubblewrap-unshare-all")
 
 
-def _copy_tree(source: Path, destination: Path, limits: AdapterLimits) -> None:
-    before = tree_inventory(source, limits)
+def _copy_tree(source: Path, destination: Path, limits: AdapterLimits, *,
+               checkpoint: Callable[[], None] | None = None) -> None:
+    before = tree_inventory(source, limits, checkpoint=checkpoint)
+    if checkpoint is not None:
+        checkpoint()
     destination.mkdir()
     # Explicit byte copies: no worktree operation or writable hardlink to originals.
     for entry in before:
+        if checkpoint is not None:
+            checkpoint()
         target = destination / entry["path"]
         target.parent.mkdir(parents=True, exist_ok=True)
+        copied = 0
         with package_file(source, entry["path"]).open("rb") as read, target.open("xb") as write:
-            shutil.copyfileobj(read, write, 1024 * 1024)
+            while True:
+                if checkpoint is not None:
+                    checkpoint()
+                chunk = read.read(1024 * 1024)
+                if not chunk:
+                    break
+                copied += len(chunk)
+                if copied > entry["bytes"]:
+                    raise PipelineError("Input/tool changed while taking its private snapshot")
+                write.write(chunk)
         target.chmod(0o500 if os.access(source / entry["path"], os.X_OK) else 0o400)
-    if tree_inventory(destination, limits) != before or tree_inventory(source, limits) != before:
+    if (tree_inventory(destination, limits, checkpoint=checkpoint) != before
+            or tree_inventory(source, limits, checkpoint=checkpoint) != before):
         raise PipelineError("Input/tool changed while taking its private snapshot")
+    if checkpoint is not None:
+        checkpoint()
 
 
 def _limits_launcher(plan: CommandPlan, limits: AdapterLimits) -> list[str]:
@@ -213,12 +258,19 @@ def _limits_launcher(plan: CommandPlan, limits: AdapterLimits) -> list[str]:
     return [sys.executable, "-I", "-S", "-c", code, *plan.argv]
 
 
-def _working_size(job: Path, limits: AdapterLimits) -> None:
+def _working_size(job: Path, limits: AdapterLimits, *,
+                  checkpoint: Callable[[], None] | None = None) -> None:
     # Cheap watchdog: hash and parse validation happens after the process exits.
+    if checkpoint is not None:
+        checkpoint()
     count = total = 0
     for root in (job / "output", job / "work"):
         for directory, directories, files in os.walk(root, followlinks=False):
+            if checkpoint is not None:
+                checkpoint()
             for name in [*directories, *files]:
+                if checkpoint is not None:
+                    checkpoint()
                 path = Path(directory) / name
                 info = path.lstat()
                 count += 1
@@ -230,6 +282,8 @@ def _working_size(job: Path, limits: AdapterLimits) -> None:
                         raise PipelineError("Adapter exceeded output capacity")
                 if count > limits.files or total > limits.total_bytes:
                     raise PipelineError("Adapter exceeded output capacity")
+    if checkpoint is not None:
+        checkpoint()
 
 
 def validate_normalized_package(root: Path, binding: InputBinding, profile: CoverageProfile) -> dict:
@@ -359,22 +413,33 @@ class TrustedAdapterRunner:
             raise PipelineError("Trusted adapter failed; private diagnostics were not exposed") from exc
 
     @staticmethod
-    def _execute(plan: CommandPlan, limits: AdapterLimits, job: Path) -> None:
+    def _execute(plan: CommandPlan, limits: AdapterLimits, job: Path, *,
+                 cancel_check: Callable[[], bool] | None = None,
+                 watchdog_job: Path | None = None) -> None:
         if os.name != "posix":
             raise PipelineError("This external adapter runner requires a configured POSIX sandbox")
         process: subprocess.Popen | None = None
+        watched = watchdog_job if watchdog_job is not None else job
+        deadline = time.monotonic() + limits.timeout_seconds
+        def check_cancel():
+            if cancel_check is not None and cancel_check():
+                raise PipelineError("Texture job cancelled; no output was approved")
+            if time.monotonic() >= deadline:
+                raise PipelineError("Trusted adapter timed out; no output was approved")
         try:
+            check_cancel()
             # Output is discarded, not returned to a browser or retained unbounded.
             process = subprocess.Popen(_limits_launcher(plan, limits), cwd=plan.cwd, env=plan.env,
                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                        start_new_session=True, close_fds=True)
-            deadline = time.monotonic() + limits.timeout_seconds
             while process.poll() is None:
-                _working_size(job, limits)
+                check_cancel()
+                _working_size(watched, limits, checkpoint=check_cancel)
                 if time.monotonic() >= deadline:
                     raise PipelineError("Trusted adapter timed out; no output was approved")
                 time.sleep(0.025)
-            _working_size(job, limits)
+            check_cancel()
+            _working_size(watched, limits, checkpoint=check_cancel)
             if process.returncode != 0:
                 raise PipelineError(f"Trusted adapter or OS sandbox failed; no output was approved (exit={process.returncode})")
         finally:

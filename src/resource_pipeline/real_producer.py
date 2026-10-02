@@ -7,8 +7,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from .adapters import file_digest, tree_digest
-from .security import PipelineError, atomic_write, canonical_json
+from .adapters import file_digest, tree_inventory
+from .security import PipelineError, atomic_write, canonical_json, sha256
 
 FAMILIES = {
     'items': r'Item_(\d+)', 'tiles': r'Tiles_(\d+)', 'walls': r'Wall_(\d+)',
@@ -38,20 +38,25 @@ class RawEvidenceProducer:
             inspect_server = extract_server_semantics
         self.inspect_server = inspect_server
 
-    def produce(self, sources: dict[str, Path], textures: dict, output: Path) -> dict:
+    def produce(self, sources: dict[str, Path], textures: dict, output: Path, *, checkpoint=lambda: None) -> dict:
+        checkpoint()
         if output.exists() or any(p.is_symlink() for p in [output, *output.parents]):
             raise PipelineError('Evidence output must be a new private directory')
         output.mkdir(parents=True)
-        bindings = {role: {'treeSha256': tree_digest(root)} for role, root in sources.items()}
+        inventories = {role: tree_inventory(root, checkpoint=checkpoint) for role, root in sources.items()}
+        bindings = {role: {'treeSha256': sha256(canonical_json(rows))} for role, rows in inventories.items()}
         server = sources.get('server')
-        executables = sorted(server.rglob('TerrariaServer.exe')) if server else []
+        executables = [server / row['path'] for row in inventories.get('server', []) if Path(row['path']).name == 'TerrariaServer.exe']
         if len(executables) > 4:
             raise PipelineError('Ambiguous server executable inventory')
         assemblies, rejected = [], []
         for index, path in enumerate(executables):
-            digest = file_digest(path)
+            checkpoint()
+            digest = file_digest(path, checkpoint=checkpoint)
             try:
-                evidence = self.inspect_server(path)
+                evidence = self.inspect_server(path, checkpoint=checkpoint)
+                if evidence.get("input", {}).get("sha256") != digest:
+                    raise PipelineError("Static metadata source changed")
             except PipelineError:
                 rejected.append({'sha256': digest, 'code': 'STATIC_METADATA_REJECTED'})
                 continue
@@ -68,6 +73,7 @@ class RawEvidenceProducer:
             if receipt.get('status') != 'TEXTURES_DECODED':
                 continue
             for row in receipt.get('images', []):
+                checkpoint()
                 stem = Path(row['input']).stem
                 for family, pattern in FAMILIES.items():
                     match = re.fullmatch(pattern, stem)
@@ -81,6 +87,7 @@ class RawEvidenceProducer:
                     unclassified += 1
         coverage = {}
         for family, missing_rules in REQUIRED_SEMANTICS.items():
+            checkpoint()
             rows = images.get(family, [])
             picture_ids = {row['ids'][0] for row in rows}
             ids = id_sets.get(family, set())
@@ -98,5 +105,9 @@ class RawEvidenceProducer:
             'unclassifiedDecodedImages': unclassified,
             'versionEvidence': [item['evidence'].get('gameVersionEvidence') for item in assemblies],
             'blockers': ['GAME_VERSION_AND_FULL_SEMANTICS_NOT_VERIFIED']}
+        for role, root in sources.items():
+            if tree_inventory(root, checkpoint=checkpoint) != inventories[role]:
+                raise PipelineError('Original source changed during semantic extraction')
+        checkpoint()
         atomic_write(output / 'version-adapter-manifest.json', canonical_json(manifest))
         return manifest

@@ -50,8 +50,8 @@ def synthetic_pe(*, resources=None, pe64=False, bad_signature=False):
     typedef('Terraria.ID', 'NumericID', [('SByte',4,-5),('Byte',5,250),('Int16',6,-200),('UInt16',7,65500),('Int32',8,-100000),('UInt32',9,4000000000),('Int64',10,-9000000000),('UInt64',11,18000000000000000000)])
     if resources is None:
         resources = {
-            'Terraria.Localization.Content.en-US.Main.json': b'{// fixture\n "ItemName": {"Example": "Synthetic Example",},"Literal":"http://fixture/",}',
-            'Terraria.Localization.Content.zh-Hans.Main.json': '{"ItemName":{"Example":"测试条目"},"OnlyChinese":"值","Ref":"{$Absent}"}'.encode(),
+            'Terraria.Localization.Content.en-US.Main.json': b'{// fixture\n "ItemName": {"Example": "Synthetic Example",},"Misc":{"Literal":"http://fixture/"},}',
+            'Terraria.Localization.Content.zh-Hans.Main.json': '{"ItemName":{"Example":"测试条目"},"Misc":{"OnlyChinese":"值","Ref":"{$Reference.Absent}"}}'.encode(),
             'Other.fixture.dat': b'original fixture bytes',
         }
     resource_data = bytearray()
@@ -136,15 +136,16 @@ class ServerSemanticsTests(unittest.TestCase):
         self.assertEqual(2,result['literalCounts']['ItemID'])
         self.assertEqual(15,result['ids']['ArmorIDs+Head']['ExampleHat'])
         self.assertEqual('Synthetic Example',result['localization']['en-US']['strings']['ItemName.Example'])
-        self.assertEqual('http://fixture/',result['localization']['en-US']['strings']['Literal'])
+        self.assertEqual('http://fixture/',result['localization']['en-US']['strings']['Misc.Literal'])
         self.assertEqual('测试条目',result['localization']['zh-Hans']['strings']['ItemName.Example'])
         self.assertEqual(3,len(result['resources']))
         self.assertEqual({'Dynamic','Label'}, {row['field'] for row in result['unsupportedFields']})
         self.assertEqual(3,len(result['idFamilies']['items']['records']))
         self.assertEqual(1,len(result['idFamilies']['items']['countConstants']))
-        self.assertEqual(['Literal'],result['localeDiagnostics']['missingChineseKeys'])
-        self.assertFalse(result['localeDiagnostics']['fallbackEvaluated'])
-        self.assertEqual([{'key':'Ref','reference':'Absent'}],result['localeDiagnostics']['unresolvedReferences']['zh-Hans'])
+        self.assertEqual(['Misc.Literal'],result['localeDiagnostics']['missingChineseKeys'])
+        self.assertTrue(result['localeDiagnostics']['fallbackEvaluated'])
+        self.assertFalse(result['localeDiagnostics']['binaryLoaderEquivalenceVerified'])
+        self.assertEqual([{'key':'Misc.Ref','reference':'Reference.Absent'}],result['localeDiagnostics']['unresolvedReferences']['zh-Hans'])
         self.assertTrue(all(not row['complete'] for row in result['coverage'].values()))
         proof = result['idEvidence']['ItemID']['Example']
         self.assertEqual(1,struct.unpack_from('<i',data,proof['valueBlobOffset'])[0])
@@ -167,26 +168,93 @@ class ServerSemanticsTests(unittest.TestCase):
     def test_resource_decoder_refuses_bombs_truncation_and_concatenation(self):
         name = 'Terraria.Localization.Content.en-US.Main.json.gz'
         for payload in [gzip.compress(b'{"a":"' + b'x'*20000 + b'"}'),gzip.compress(b'{}')[:-3],gzip.compress(b'{}') + gzip.compress(b'{}')]:
-            with self.subTest(length=len(payload)), self.assertRaises(PipelineError):
-                self.extract(synthetic_pe(resources={name:payload}),SemanticLimits(resource_file_bytes=1024))
+            with self.subTest(length=len(payload)):
+                result = self.extract(synthetic_pe(resources={name:payload}),SemanticLimits(resource_file_bytes=1024))
+                self.assertEqual('REJECTED_RESOURCE',result['resources'][0]['status'])
+                self.assertEqual(1,result['ids']['ItemID']['Example'])
 
     def test_strict_localization_validation(self):
         name = 'Terraria.Localization.Content.en-US.Main.json'
-        for payload in [b'{"a":1}',b'{"a":"x","a":"y"}',b'{"a":{"b":"x"},"a.b":"y"}',b'[]',b'/*bad',b'{"a":NaN}',b'\xff',b'['*70 + b']'*70]:
-            with self.subTest(payload=payload[:20]),self.assertRaises(PipelineError):
-                self.extract(synthetic_pe(resources={name:payload}))
+        for payload in [b'{"a":1}',b'[]',b'/*bad',b'{"a":NaN}',b'\xff',b'['*70 + b']'*70]:
+            with self.subTest(payload=payload[:20]):
+                result = self.extract(synthetic_pe(resources={name:payload}))
+                self.assertEqual('REJECTED_RESOURCE',result['resources'][0]['status'])
+                self.assertFalse(result['complete'])
 
-    def test_duplicate_keys_across_locale_resources_refused(self):
-        with self.assertRaisesRegex(PipelineError,'Duplicate localization key across resources'):
-            self.extract(synthetic_pe(resources={f'Terraria.Localization.Content.en-US.{n}.json':b'{"a":"x"}' for n in ('A','B')}))
+    def test_duplicate_keys_follow_typed_dictionary_last_assignment_with_trace(self):
+        name = 'Terraria.Localization.Content.en-US.Main.json'
+        result = self.extract(synthetic_pe(resources={name:b'{"C":{"A":"first","A":"last","Safe":"unique"}}'}))
+        self.assertEqual({'C.A':'last','C.Safe':'unique'},result['localization']['en-US']['strings'])
+        proof = result['localeDiagnostics']['duplicateSelectionEvidence']['en-US'][0]
+        self.assertEqual('/C/A',proof['jsonPointer'])
+        self.assertEqual([0,1],proof['occurrenceOrdinals'])
+        self.assertEqual(1,proof['selectedOrdinal'])
+        self.assertEqual(2,len(proof['valueSha256s']))
+        self.assertFalse(result['complete'])
+        result = self.extract(synthetic_pe(resources={name:b'{"C":{"A":"old"},"C":{"B":"new"}}'}))
+        self.assertEqual({'C.B':'new'},result['localization']['en-US']['strings'])
+        self.assertEqual(1,result['localization']['en-US']['baseline']['keyEvidence']['C.B']['categoryOrdinal'])
+
+    def test_equal_duplicate_values_are_proven_and_conflicts_select_last(self):
+        name = 'Terraria.Localization.Content.en-US.Main.json'
+        result = self.extract(synthetic_pe(resources={name:b'{"C":{"A":"x","A":"x"}}'}))
+        self.assertEqual({'C.A':'x'},result['localization']['en-US']['strings'])
+        self.assertEqual(1,len(result['localeDiagnostics']['identicalDuplicateKeys']['en-US']))
+        result = self.extract(synthetic_pe(resources={name:b'{"C":{"A":"x","A":"x","A":"y"}}'}))
+        self.assertEqual({'C.A':'y'},result['localization']['en-US']['strings'])
+        self.assertEqual(3,result['localeDiagnostics']['duplicateSelectionEvidence']['en-US'][0]['occurrences'])
+
+    def test_rejected_locale_preserves_other_resources_and_id_evidence(self):
+        result = self.extract(synthetic_pe(resources={
+            'Terraria.Localization.Content.en-US.Bad.json': b'{"bad":4}',
+            'Terraria.Localization.Content.zh-Hans.Good.json': b'{"C":{"Safe":"unique"}}',
+        }))
+        self.assertEqual('REJECTED_RESOURCE',result['resources'][0]['status'])
+        self.assertIn('dataOffset',result['resources'][0])
+        self.assertIn('sha256',result['resources'][0])
+        self.assertEqual({'C.Safe':'unique'},result['localization']['zh-Hans']['strings'])
+        self.assertEqual(1,result['ids']['ItemID']['Example'])
+        for limits in (SemanticLimits(locale_keys=1),SemanticLimits(decoded_total_bytes=10)):
+            result = self.extract(limits=limits)
+            self.assertEqual('RESOURCE_BUDGET_EXHAUSTED',result['resources'][0]['errorCode'])
+            self.assertEqual('SKIPPED_RESOURCE_BUDGET',result['resources'][1]['status'])
+            self.assertEqual(1,result['ids']['ItemID']['Example'])
+
+    def test_duplicate_keys_across_resources_follow_metadata_order(self):
+        result = self.extract(synthetic_pe(resources={
+            'Terraria.Localization.Content.en-US.Z.json': b'{"C":{"A":"first"}}',
+            'Terraria.Localization.Content.en-US.A.json': b'{"C":{"A":"last"}}',
+        }))
+        self.assertEqual({'C.A':'last'},result['localization']['en-US']['strings'])
+        self.assertEqual(1,len(result['localeDiagnostics']['duplicateSelectionEvidence']['en-US']))
+        choice = result['localization']['en-US']['baseline']['resourceOverrides'][0]
+        self.assertEqual(0,choice['previous']['resourceOrder'])
+        self.assertEqual(1,choice['selected']['resourceOrder'])
 
     def test_wrong_signature_is_classified_not_invented(self):
         result = self.extract(synthetic_pe(bad_signature=True))
         self.assertNotIn('ItemID',result['ids'])
         self.assertTrue(any(row.get('reason') == 'unsupported-constant-type-or-signature' for row in result['unsupportedFields']))
 
+    def test_checkpoint_cancellation_stops_read_metadata_and_language_without_output(self):
+        self.input.write_bytes(synthetic_pe())
+        original = self.input.read_bytes()
+        calls = []
+        extract_server_semantics(self.input, checkpoint=lambda: calls.append(None))
+        self.assertGreater(len(calls), 100)
+        for limit in (2, 50, len(calls) - 1):
+            counter = [0]
+            def cancel():
+                counter[0] += 1
+                if counter[0] == limit:
+                    raise PipelineError('cancelled fixture extraction')
+            with self.subTest(limit=limit), self.assertRaisesRegex(PipelineError, 'cancelled fixture'):
+                extract_server_semantics(self.input, checkpoint=cancel)
+            self.assertEqual(original,self.input.read_bytes())
+            self.assertEqual([self.input],list(self.root.iterdir()))
+
     def test_size_rows_and_key_budgets(self):
-        for limits in [SemanticLimits(input_bytes=10), SemanticLimits(table_rows=1), SemanticLimits(locale_keys=1),SemanticLimits(decoded_total_bytes=10),SemanticLimits(metadata_bytes=10)]:
+        for limits in [SemanticLimits(input_bytes=10), SemanticLimits(table_rows=1),SemanticLimits(metadata_bytes=10)]:
             with self.subTest(limits=limits),self.assertRaises(PipelineError):
                 self.extract(limits=limits)
 
@@ -285,6 +353,13 @@ class ServerSemanticsTests(unittest.TestCase):
         self.assertEqual(3,evidence['families']['items']['literalRecordCount'])
         self.assertEqual(2,evidence['locales']['en-US']['keyCount'])
         self.assertEqual(1,evidence['families']['items']['numericSamples'][1]['value'])
+        mixed = self.extract(synthetic_pe(resources={
+            'Terraria.Localization.Content.en-US.Bad.json': b'{"bad":4}',
+            'Terraria.Localization.Content.en-US.Good.json': b'{"C":{"A":"valid"}}',
+        }))
+        redacted_mixed = module.redact(mixed)
+        self.assertEqual(1,len(redacted_mixed['locales']['en-US']['resources']))
+        self.assertTrue(any(row['status']=='REJECTED_RESOURCE' for row in redacted_mixed['resourceDiagnostics']))
         with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
             with self.assertRaisesRegex(PipelineError,'restricted'):
                 module.run(self.root,self.root / 'redacted.json')

@@ -149,6 +149,24 @@ def create_app(root: Path | None = None, synchronous: bool = False, consumer_dem
         executor.submit(raw_preflight.process, created["id"])
         return created
 
+    @app.post("/api/raw-jobs/{identity}/cancel")
+    def raw_cancel(identity: str):
+        try:
+            return raw_preflight.request_cancel(identity)
+        except KeyError:
+            raise HTTPException(404, "任务不存在") from None
+
+    @app.post("/api/raw-jobs/{identity}/retry", status_code=202)
+    def raw_retry(identity: str):
+        try:
+            created = raw_preflight.retry(identity)
+        except KeyError:
+            raise HTTPException(404, "任务不存在") from None
+        if synchronous:
+            return raw_preflight.process(created["id"])
+        executor.submit(raw_preflight.process, created["id"])
+        return created
+
     @app.get("/api/raw-jobs/{identity}/review")
     def raw_review(identity: str):
         try:
@@ -157,6 +175,7 @@ def create_app(root: Path | None = None, synchronous: bool = False, consumer_dem
             raise HTTPException(404, "任务不存在") from None
         if value.get("kind") != "raw-input-preflight":
             raise HTTPException(404, "不是原始双包任务")
+        value = compact_raw(value)
         ready = value.get("extractionComplete") is True and value.get("state") == "READY_FOR_REVIEW"
         return {"id": identity, "state": value["state"], "reviewable": ready,
                 "reviewDigest": value.get("reviewDigest") if ready else None,
