@@ -8,7 +8,7 @@ authoritative version/ID-domain policy. All results are private evidence.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import os
@@ -17,9 +17,11 @@ import re
 import stat
 import struct
 import tempfile
+from time import monotonic
 import zlib
 
 from .contracts import REQUIRED_SUBMANIFESTS
+from .item_baseline import extract_fresh_item_baseline
 from .locale_semantics import REFERENCE as LOCALE_REFERENCE, compact_localization, embedded_baselines
 from .security import PipelineError, canonical_json
 from .static_il import (StaticILLimits, bounded_evidence_json, extract_item_default_stages,
@@ -727,6 +729,94 @@ def _coverage(ids: dict, unsupported: list, locales: dict) -> dict:
     return families
 
 
+def _item_evidence(meta, types, selected_ids, selection, limits, checkpoint, input_sha256):
+    """One shared work envelope, with an optional, uncomposed fresh baseline.
+
+    The independently bounded analyzers expose cumulative steps/evidence, but
+    not every failed decode's charge. Reserve one quarter of both total decode
+    capacities for the baseline instead of guessing those remaining charges.
+    Per-method, stack, field/index and call-depth caps remain per-program caps.
+    """
+    deadline = monotonic() + limits.wall_seconds
+    def shared_checkpoint():
+        checkpoint()
+        if monotonic() >= deadline:
+            raise PipelineError('STATIC_ITEM_ANALYSIS_TOTAL_TIME_LIMIT')
+
+    # This also pays for NOT_ANALYZED and aggregate accounting, including when
+    # neither analyzer has enough capacity left to start the optional pass.
+    bridge_reserve = 2048
+    minimum_evidence = 16 * 1024
+    if limits.evidence_bytes < minimum_evidence + bridge_reserve:
+        raise PipelineError('STATIC_ITEM_ANALYSIS_EVIDENCE_ENVELOPE_LIMIT')
+    reserved_decode = limits.total_decoded_instructions // 4
+    reserved_bytes = limits.total_method_bytes // 4
+    stage_limits = replace(limits,
+        total_decoded_instructions=limits.total_decoded_instructions - reserved_decode,
+        total_method_bytes=limits.total_method_bytes - reserved_bytes,
+        evidence_bytes=limits.evidence_bytes - bridge_reserve)
+    shared_checkpoint()
+    stages = extract_item_default_stages(meta, types, selected_ids, stage_limits, shared_checkpoint,
+        selection=selection, input_sha256=input_sha256)
+    shared_checkpoint()
+    stage_steps = stages['analyzedInstructions']
+    stage_evidence = stages['evidenceBudget']['accountedConstructionBytes']
+    remaining_steps = max(0, limits.total_steps - stage_steps)
+    remaining_evidence = limits.evidence_bytes - bridge_reserve - stage_evidence
+    reason = None
+    if stages.get('diagnostic', {}).get('code') == 'TOTAL_TIME_LIMIT':
+        reason = 'STAGE_ANALYSIS_TIME_LIMIT'
+    elif not remaining_steps:
+        reason = 'NO_REMAINING_TOTAL_STEPS'
+    elif not reserved_decode or not reserved_bytes:
+        reason = 'NO_RESERVED_DECODE_CAPACITY'
+    elif remaining_evidence < minimum_evidence:
+        reason = 'INSUFFICIENT_REMAINING_EVIDENCE_BYTES'
+    if reason is not None:
+        baseline = {'schemaVersion': 1, 'status': 'NOT_ANALYZED',
+            'scope': 'fresh-instance-constructor-then-ResetStats-primitive-baseline',
+            'reason': reason, 'inputSha256': input_sha256, 'resetArguments': [0],
+            'executedInput': False, 'complete': False, 'finalItemDefaults': False,
+            'baselineComplete': False, 'fields': [], 'prefixFields': [],
+            'excludedFields': [], 'methods': [], 'staticInitializers': [],
+            'analyzedInstructions': 0, 'provenPrimitiveFields': 0, 'unknownPrimitiveFields': 0}
+        baseline_steps = baseline_evidence = 0
+    else:
+        shared_checkpoint()
+        remaining_seconds = deadline - monotonic()
+        if remaining_seconds <= 0:
+            raise PipelineError('STATIC_ITEM_ANALYSIS_TOTAL_TIME_LIMIT')
+        baseline_limits = replace(limits, total_steps=remaining_steps,
+            total_decoded_instructions=reserved_decode, total_method_bytes=reserved_bytes,
+            evidence_bytes=remaining_evidence, wall_seconds=remaining_seconds)
+        baseline = extract_fresh_item_baseline(meta, types, reset_type=0, limits=baseline_limits,
+            checkpoint=shared_checkpoint, input_sha256=input_sha256)
+        baseline_steps = baseline['analyzedInstructions']
+        baseline_evidence = baseline['evidenceBudget']['accountedConstructionBytes']
+    shared_checkpoint()
+    accounting = {
+        'scope': 'shared-stage-and-fresh-baseline-analysis',
+        'composition': 'separate evidence; no stage seeds or per-ID defaults',
+        'totalStepLimit': limits.total_steps, 'analyzedInstructions': stage_steps + baseline_steps,
+        'stepAccounting': 'includes a rejected limit-check step when exhausted',
+        'wallSecondsLimit': limits.wall_seconds, 'deadlinePolicy': 'one shared fail-closed deadline',
+        'decodeReservations': {
+            'stages': {'totalInstructions': stage_limits.total_decoded_instructions,
+                       'totalMethodBytes': stage_limits.total_method_bytes},
+            'freshBaseline': {'totalInstructions': reserved_decode, 'totalMethodBytes': reserved_bytes},
+            'accounting': 'capacity reservation; failed-decode usage is not exported by the analyzers'},
+        'evidenceBudget': {'limitBytes': limits.evidence_bytes, 'bridgeReserveBytes': bridge_reserve,
+                          'stageConstructionBytes': stage_evidence, 'baselineConstructionBytes': baseline_evidence,
+                          'accountedConstructionBytes': bridge_reserve + stage_evidence + baseline_evidence}}
+    # The fixed bridge envelope and the complete joined result are independently
+    # checked. This cannot spend a second full evidence allowance, even on stop.
+    json_evidence_size({'itemAnalysisBudget': accounting,
+                        'freshItemBaseline': baseline if reason else None}, bridge_reserve, shared_checkpoint)
+    json_evidence_size({'itemDefaultStages': stages, 'freshItemBaseline': baseline,
+                        'itemAnalysisBudget': accounting}, limits.evidence_bytes, shared_checkpoint)
+    return stages, baseline, accounting
+
+
 def extract_server_semantics(input_path: Path, limits: SemanticLimits = SemanticLimits(), checkpoint=None,
                              item_stage_ids=None, il_limits: StaticILLimits = StaticILLimits(),
                              requested_locales=None) -> dict:
@@ -797,8 +887,8 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
                                     'remainingCount': len(set(positive_ids) - selected_set),
                                     'remainingIds': [value for value in positive_ids if value not in selected_set],
                                     'remainingStatus': 'NOT_ANALYZED_IN_THIS_BATCH'}
-        item_stages = extract_item_default_stages(meta, types, selected_ids, il_limits, checkpoint,
-            selection=selection_evidence, input_sha256=hashlib.sha256(data).hexdigest())
+        item_stages, item_baseline, item_analysis_budget = _item_evidence(
+            meta, types, selected_ids, selection_evidence, il_limits, checkpoint, hashlib.sha256(data).hexdigest())
         checkpoint()
     except PipelineError:
         raise
@@ -847,6 +937,7 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
             'assembly': {'name': assembly_name, 'version': version, 'metadataOffset': assembly_offset},
             'gameVersionEvidence': version_evidence, 'idFamilies': id_families,
             'loaderMethodEvidence': loader_methods, 'itemDefaultStages': item_stages,
+            'freshItemBaseline': item_baseline, 'itemAnalysisBudget': item_analysis_budget,
             'localeRuleEvidence': {**LOCALE_REFERENCE, 'binaryLoaderEquivalenceVerified': False,
                                    'jsonNetEmbeddedReferenceMatch': any(row.get('sha256') == LOCALE_REFERENCE['jsonNetReferenceSha256'] for row in resources)},
             'localization': localization, 'localeEvidence': locale_evidence,

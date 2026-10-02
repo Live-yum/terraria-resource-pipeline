@@ -170,7 +170,7 @@ class Instruction:
     next_offset: int
 
 
-def decode_il(code: bytes, limits=StaticILLimits(), checkpoint=None) -> dict[int, Instruction]:
+def decode_il(code: bytes, limits=StaticILLimits(), checkpoint=None, *, instruction_budget=None) -> dict[int, Instruction]:
     checkpoint = checkpoint or (lambda: None)
     if len(code)>limits.method_bytes:
         raise ILUnsupported('METHOD_BYTE_LIMIT')
@@ -187,6 +187,8 @@ def decode_il(code: bytes, limits=StaticILLimits(), checkpoint=None) -> dict[int
         checkpoint()
         if len(result)>=limits.method_instructions:
             raise ILUnsupported('INSTRUCTION_LIMIT',offset=position)
+        if instruction_budget is not None:
+            instruction_budget()
         offset=position
         opcode=unpack('B')
         if opcode==0xfe: opcode=0xfe00+unpack('B')
@@ -555,6 +557,9 @@ class MetadataProgram:
                 initialized=bool(flags&16);local_token=self.meta.reader.uint(body+8,4)
             else:raise ILUnsupported('UNSUPPORTED_METHOD_HEADER',token=token)
             if size>self.limits.method_bytes:raise ILUnsupported('METHOD_BYTE_LIMIT',token=token)
+            if self.decoded_bytes+size>self.limits.total_method_bytes:
+                raise ILUnsupported('TOTAL_METHOD_BYTE_LIMIT',token=token)
+            self.decoded_bytes+=size  # Retain attempted-copy charges even if later validation fails.
             code_offset=self.meta.rva(row[0]+header,size);code=self.meta.reader.take(code_offset,size)
             locals_=[]
             if local_token:
@@ -577,10 +582,13 @@ class MetadataProgram:
                 evidence['declaringType']=self.foreign_owners[token]
                 evidence['resolution']='same-assembly-call-free-integer-helper'
             self.evidence_budget.charge(evidence)
-            if self.decoded_bytes+size>self.limits.total_method_bytes:raise ILUnsupported('TOTAL_METHOD_BYTE_LIMIT',token=token)
-            instructions=decode_il(code,self.limits,self.checkpoint)
-            if self.decoded_instructions+len(instructions)>self.limits.total_decoded_instructions:raise ILUnsupported('TOTAL_DECODED_INSTRUCTION_LIMIT',token=token)
-            self.decoded_bytes+=size;self.decoded_instructions+=len(instructions)
+            def charge_instruction():
+                if self.decoded_instructions>=self.limits.total_decoded_instructions:
+                    raise ILUnsupported('TOTAL_DECODED_INSTRUCTION_LIMIT',token=token)
+                # Charge before reading the opcode/operands; malformed or later
+                # rejected methods never refund work already attempted.
+                self.decoded_instructions+=1
+            instructions=decode_il(code,self.limits,self.checkpoint,instruction_budget=charge_instruction)
             if foreign:
                 if any(kind not in _INTEGRAL_KINDS for kind in locals_):
                     raise ILUnsupported('UNSUPPORTED_PURE_HELPER_SIGNATURE',token=token)

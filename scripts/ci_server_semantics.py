@@ -31,6 +31,21 @@ def digest_text(value: str) -> str:
     return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
 
+def redact_fresh_baseline(baseline):
+    """Counts and a binding to the private proof, never field data or names."""
+    return {'status': baseline['status'], 'inputSha256': baseline['inputSha256'],
+            'proofSha256': hashlib.sha256(canonical_json(baseline)).hexdigest(),
+            'scope': 'fresh-instance-constructor-then-ResetStats-primitive-baseline',
+            'resetArguments': [0], 'executedInput': False, 'complete': False,
+            'finalItemDefaults': False, 'provenPrimitiveFieldCount': baseline['provenPrimitiveFields'],
+            'unknownPrimitiveFieldCount': baseline['unknownPrimitiveFields'],
+            'excludedFieldCount': len(baseline['excludedFields']),
+            'prefixFieldCount': len(baseline['prefixFields']), 'methodCount': len(baseline['methods']),
+            'staticInitializerCount': len(baseline['staticInitializers']),
+            'analyzedInstructions': baseline['analyzedInstructions'],
+            'notAnalyzedReason': baseline.get('reason')}
+
+
 def redact_item_stages(stage):
     return {'status': stage['status'], 'complete': False, 'finalItemDefaults': False,
             'selection': stage['selection'], 'analyzedInstructions': stage.get('analyzedInstructions',0),
@@ -119,6 +134,7 @@ def redact(result: dict) -> dict:
                    'gitBlobSha1': SOURCE_BLOB, **result['input']},
         'assemblyVersion': version,
         'itemDefaultStages': redact_item_stages(result['itemDefaultStages']),
+        'freshItemBaseline': redact_fresh_baseline(result['freshItemBaseline']),
         'localeRuleEvidence': result['localeRuleEvidence'],
         'loaderMethodEvidence': [{'methodNameSha256': digest_text(row.get('type','') + '.' + row.get('method','')),
                                   **{key: value for key,value in row.items() if key not in ('type','method')}}
