@@ -32,11 +32,24 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Build portable TConvert-derived texture decoder
-        run: dotnet publish tools/TextureExtractor -c Release -o /tmp/texture-tool
+        run: dotnet publish tools/TextureExtractor -c Release -o /tmp/texture-tool --disable-build-servers -p:UseSharedCompilation=false -nodeReuse:false
       - name: Verify real XNB conversion and isolated automatic upload pipeline
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: '1'
         run: |
+          python - <<'PYCOUNT'
+          import os
+          from pathlib import Path
+          count = 0
+          for path in Path('/proc').glob('[0-9]*/status'):
+              try:
+                  fields = dict(line.split(':', 1) for line in path.read_text().splitlines() if ':' in line)
+                  if int(fields['Uid'].split()[0]) == os.getuid():
+                      count += int(fields['Threads'])
+              except (OSError, KeyError, ValueError):
+                  pass
+          print('Synthetic CI current-UID thread count before sandbox:', count)
+          PYCOUNT
           python scripts/ci_textures.py --dotnet "$(readlink -f "$(command -v dotnet)")" --tool /tmp/texture-tool
           python scripts/ci_dxt_cases.py "$(readlink -f "$(command -v dotnet)")" /tmp/texture-tool/TextureExtractor.dll
           python scripts/ci_textures.py --sandbox --dotnet "$(readlink -f "$(command -v dotnet)")" --tool /tmp/texture-tool
