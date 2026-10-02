@@ -24,6 +24,28 @@ from .security import ArchiveLimits, PipelineError, extract_zip, atomic_write
 from .adapters import file_digest
 
 
+def _raw_checkpoint(canceled, deadline, *, clock=None):
+    """Check the deadline on every call; poll the persistent cancel file at 5 ms.
+
+    Static data parsers may checkpoint millions of times. A filesystem stat per
+    instruction adds no useful cancellation responsiveness. Final job-state
+    checks and child-process cancellation remain immediate and unchanged.
+    """
+    clock = time.monotonic if clock is None else clock
+    next_cancel_poll = float('-inf')
+    def checkpoint():
+        nonlocal next_cancel_poll
+        now = clock()
+        if now >= next_cancel_poll:
+            if canceled():
+                raise PipelineError('RAW_JOB_CANCELED')
+            now = clock()
+            next_cancel_poll = now + 0.005
+        if now >= deadline:
+            raise PipelineError('RAW_JOB_TIMEOUT')
+    return checkpoint
+
+
 @dataclass(frozen=True)
 class TrustedSource:
     """Administrator configuration, not constructed from any uploaded field."""
@@ -162,9 +184,7 @@ class RawInputPreflight:
             blockers = []
             deadline = time.monotonic() + 120
             canceled = lambda: (directory / "cancel.request").exists()
-            def checkpoint():
-                if canceled(): raise PipelineError("RAW_JOB_CANCELED")
-                if time.monotonic() >= deadline: raise PipelineError("RAW_JOB_TIMEOUT")
+            checkpoint = _raw_checkpoint(canceled, deadline)
             def stopped():
                 if not canceled() and time.monotonic() < deadline:
                     return False
