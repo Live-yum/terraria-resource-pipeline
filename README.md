@@ -38,6 +38,10 @@ node --check web/app.js && node --check web/cache.js
 
 版本提示与包内元数据不作为证明；默认未登记真实来源哈希、未接入真实生产器。即使操作者登记了同版本源包，当前入口也只做预检。详见 [双来源预检](docs/RAW-PREFLIGHT.zh-CN.md) 和 [资源设计与真实验收](docs/RESOURCE-DESIGN.zh-CN.md)。
 
+## 已有 PNG 输出预检
+
+已有桌面工具提取的 PNG ZIP 可独立检查图片哈希、尺寸和像素重复，不执行上传代码。此入口仍不能证明真实版本、语义覆盖或发布权利；暂未接入网页上传/发布。见 [私有 PNG 导入检查](docs/DECODED-IMAGES.zh-CN.md)。
+
 ## 静态程序集检查器
 
 `tools/AssemblyInspector` 使用 .NET `PEReader` 与 `System.Reflection.Metadata`，只读取 ID 常量和中英嵌入本地化 JSON，不执行类型初始化或上传代码。公开 CI 用带抛异常初始化器的原创合成程序集证明这一点。
