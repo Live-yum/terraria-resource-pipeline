@@ -15,6 +15,21 @@ from .security import PipelineError, atomic_write, canonical_json, relative_path
 from .contracts import package_file
 
 ROLES = ("materials.base", "materials.rules", "pixel.catalog", "pixel.rgb")
+# Server-owned allowlists. Uploaded objects cannot define their own contract.
+GROUPS = {
+    "materials": (dict.fromkeys(ROLES[:3], "json") | {"pixel.rgb": "binary"}, "materials.base"),
+    "items": (dict.fromkeys(("items.catalog", "items.rules", "items.categories"), "json"), "items.catalog"),
+    "player": ({"player.presentation": "json", "player.walk": "binary", "player.atlas": "binary"}, "player.presentation"),
+    "worldgen": ({"worldgen.choices": "json"}, None),
+}
+
+
+def _group(name: str):
+    if not isinstance(name, str) or name not in GROUPS:
+        raise PipelineError("Unknown fixed consumer resource group")
+    formats, base = GROUPS[name]
+    return formats, base, {role for role in formats if base is not None and role != base}
+
 MAX_RAW_BYTES = 32 * 1024 * 1024
 MAX_RELEASE_BYTES = 64 * 1024 * 1024
 HEX64 = re.compile(r"^[a-f0-9]{64}$")
@@ -39,7 +54,8 @@ def manifest_body(manifest: dict) -> dict:
     return {key: value for key, value in manifest.items() if key != "releaseId"}
 
 
-def validate_manifest(manifest: dict) -> None:
+def validate_manifest(manifest: dict, *, group: str = "materials") -> None:
+    formats, base_role, derived_roles = _group(group)
     if not isinstance(manifest, dict) or set(manifest) != {"schemaVersion", "gameVersion", "releaseId", "sourceBinding", "objects"}:
         raise PipelineError("Invalid consumer release fields")
     if type(manifest["schemaVersion"]) is not int or manifest["schemaVersion"] != 1:
@@ -50,22 +66,22 @@ def validate_manifest(manifest: dict) -> None:
     if manifest["releaseId"] != sha256(canonical_json(manifest_body(manifest))):
         raise PipelineError("Consumer release identity mismatch")
     objects = manifest["objects"]
-    if not isinstance(objects, dict) or set(objects) != set(ROLES):
-        raise PipelineError("Incomplete atomic materials release")
-    base = objects["materials.base"].get("rawSha256") if isinstance(objects["materials.base"], dict) else None
+    if not isinstance(objects, dict) or set(objects) != set(formats):
+        raise PipelineError("Incomplete atomic consumer resource group")
+    base = objects[base_role].get("rawSha256") if base_role and isinstance(objects[base_role], dict) else None
     total = 0
     for role, ref in objects.items():
         fields = {"path", "sha256", "bytes", "encoding", "format", "rawSha256", "rawBytes", "gameVersion"}
-        if role != "materials.base":
+        if role in derived_roles:
             fields.add("baseSha256")
         if not isinstance(ref, dict) or set(ref) != fields:
             raise PipelineError("Invalid consumer object descriptor")
-        if ref["gameVersion"] != manifest["gameVersion"] or (role != "materials.base" and ref["baseSha256"] != base):
+        if ref["gameVersion"] != manifest["gameVersion"] or (role in derived_roles and ref["baseSha256"] != base):
             raise PipelineError("Mixed consumer material versions")
         for field in ("sha256", "rawSha256"):
             if not isinstance(ref[field], str) or not HEX64.fullmatch(ref[field]):
                 raise PipelineError("Invalid consumer object hash")
-        if ref["encoding"] not in ("identity", "gzip") or ref["format"] != ("binary" if role == "pixel.rgb" else "json"):
+        if ref["encoding"] not in ("identity", "gzip") or ref["format"] != formats[role]:
             raise PipelineError("Unsupported consumer object encoding or format")
         for field in ("bytes", "rawBytes"):
             if type(ref[field]) is not int or not 0 < ref[field] <= MAX_RAW_BYTES:
@@ -93,39 +109,40 @@ def _json_pairs(items):
 
 
 def build_consumer_release(output: Path, *, game_version: str, source_binding: dict,
-                           objects: dict[str, bytes], compress: bool = False) -> dict:
-    """Package data-only reviewed inputs. Does not authorize release/publication.
+                           objects: dict[str, bytes], compress: bool = False, group: str = "materials") -> dict:
+    """Package data-only reviewed inputs for one fixed group; no publication approval.
 
     Source binding records evidence identity, not proof of runtime semantics.
     JSON bytes are retained exactly; no private assets are fixtures in this repo.
     """
-    if set(objects) != set(ROLES):
-        raise PipelineError("All atomic materials objects are required")
+    formats, base_role, derived_roles = _group(group)
+    if set(objects) != set(formats):
+        raise PipelineError("All atomic group objects are required")
     for role, raw in objects.items():
         if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_RAW_BYTES:
             raise PipelineError("Invalid consumer input bytes")
-        if role != "pixel.rgb":
+        if formats[role] == "json":
             try:
                 json.loads(raw, object_pairs_hook=_json_pairs, parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Nonfinite JSON")))
             except (ValueError, UnicodeError) as exc:
                 raise PipelineError("Invalid consumer JSON input") from exc
-    base_hash = sha256(objects["materials.base"])
+    base_hash = sha256(objects[base_role]) if base_role else None
     manifest = {"schemaVersion": 1, "gameVersion": game_version, "sourceBinding": source_binding, "objects": {}}
     stored_objects = {}
     for role, raw in objects.items():
         stored = gzip.compress(raw, mtime=0) if compress else raw
         digest = sha256(stored)
-        fmt = "binary" if role == "pixel.rgb" else "json"
+        fmt = formats[role]
         suffix = (".bin" if fmt == "binary" else ".json") + (".gz" if compress else "")
         path = f"objects/{digest[:2]}/{digest}{suffix}"
         ref = {"path": path, "sha256": digest, "bytes": len(stored), "encoding": "gzip" if compress else "identity",
                "format": fmt, "rawSha256": sha256(raw), "rawBytes": len(raw), "gameVersion": game_version}
-        if role != "materials.base":
+        if role in derived_roles:
             ref["baseSha256"] = base_hash
         manifest["objects"][role] = ref
         stored_objects[path] = stored
     manifest["releaseId"] = sha256(canonical_json(manifest))
-    validate_manifest(manifest)
+    validate_manifest(manifest, group=group)
     _safe_root(output)
     if output.exists():
         raise PipelineError("Consumer release output must be new")
@@ -136,7 +153,7 @@ def build_consumer_release(output: Path, *, game_version: str, source_binding: d
     return manifest
 
 
-def verify_consumer_release(root: Path, *, manifest_sha256: str) -> dict[str, bytes]:
+def verify_consumer_release(root: Path, *, manifest_sha256: str, group: str = "materials") -> dict[str, bytes]:
     """Re-read a pinned release; bound gzip output before JSON/use. No network."""
     _safe_root(root)
     path = package_file(root, "manifest.json")
@@ -145,7 +162,7 @@ def verify_consumer_release(root: Path, *, manifest_sha256: str) -> dict[str, by
     if sha256(path.read_bytes()) != manifest_sha256:
         raise PipelineError("Consumer manifest pin mismatch")
     manifest = read_json(path, 256 * 1024)
-    validate_manifest(manifest)
+    validate_manifest(manifest, group=group)
     result = {}
     for role, ref in manifest["objects"].items():
         path = package_file(root, ref["path"])

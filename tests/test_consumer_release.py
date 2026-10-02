@@ -1,5 +1,6 @@
 from copy import deepcopy
 import gzip
+import json
 import tempfile
 from pathlib import Path
 import unittest
@@ -175,6 +176,31 @@ class ConsumerReleaseTests(unittest.TestCase):
         self.resign(manifest)
         with self.assertRaisesRegex(PipelineError, "aggregate"):
             validate_manifest(manifest)
+
+    def test_other_fixed_groups_roundtrip_without_weakening_materials(self):
+        examples = {
+            "items": {"items.catalog": b"[[],[],[],[],[],[],[]]", "items.rules": b"{}", "items.categories": b"{}"},
+            "player": {"player.presentation": b"{}", "player.walk": b"synthetic-walk", "player.atlas": b"synthetic-atlas"},
+            "worldgen": {"worldgen.choices": b"{}"},
+        }
+        for group, objects in examples.items():
+            with self.subTest(group=group):
+                output = self.root / group
+                manifest = build_consumer_release(output, game_version="0.0.1", source_binding=BINDING, objects=objects, group=group, compress=True)
+                pin = sha256(canonical_json(manifest))
+                self.assertEqual(verify_consumer_release(output, manifest_sha256=pin, group=group), objects)
+                with self.assertRaises(PipelineError):
+                    validate_manifest(manifest)
+                with self.assertRaises(PipelineError):
+                    build_consumer_release(self.root / (group + "-missing"), game_version="0.0.1", source_binding=BINDING, objects={}, group=group)
+        world = json.loads((self.root / "worldgen/manifest.json").read_bytes())
+        self.assertNotIn("baseSha256", world["objects"]["worldgen.choices"])
+
+    def test_unknown_groups_and_role_mixing_rejected(self):
+        with self.assertRaises(PipelineError):
+            build_consumer_release(self.root / "bad", game_version="0.0.1", source_binding=BINDING, objects=fixture(), group="upload-defined")
+        with self.assertRaises(PipelineError):
+            build_consumer_release(self.root / "bad", game_version="0.0.1", source_binding=BINDING, objects=fixture(), group="items")
 
     def test_cannot_enter_trusted_publication_gate(self):
         from resource_pipeline.catalog import trusted_synthetic_policy
