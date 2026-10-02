@@ -507,6 +507,9 @@ class MetadataProgram:
         self.foreign_owners[token]=owner_name
         self.method_rows[token]=(row,offset,name)
 
+    def _signature_supported(self, token, instance, returned, args, signature):
+        return returned in ('void','bool','char','i1','u1','i2','u2','i4','u4','i8','u8','r4','r8') and not any(x in ('other','void') for x in args)
+
     def get(self,token):
         self.checkpoint()
         if token in self.cache:
@@ -526,7 +529,7 @@ class MetadataProgram:
                 return kind
             signature,_=self.meta.blob(row[4]);instance,returned,args=method_signature(signature,resolve_enum)
             if bool(row[2]&0x10)==instance:raise ILUnsupported('INVALID_METHOD_THIS_FLAG',token=token)
-            if returned not in ('void','bool','char','i1','u1','i2','u2','i4','u4','i8','u8','r4','r8') or any(x in ('other','void') for x in args):
+            if not self._signature_supported(token,instance,returned,args,signature):
                 raise ILUnsupported('UNSUPPORTED_NONNUMERIC_HELPER_SIGNATURE',token=token)
             foreign=token in self.foreign_owners
             if foreign and (instance or returned not in _INTEGRAL_KINDS or any(x not in _INTEGRAL_KINDS for x in args)
@@ -629,6 +632,10 @@ class AbstractEvaluator:
         result['analyzedInstructions']=self.path_steps
         return result
 
+    def _instruction(self, method, instruction, stack):
+        """Closed by default; separate evidence APIs may add narrower semantics."""
+        return False
+
     def _method(self,method,args):
         if len(self.callchain)>=self.limits.call_depth:raise ILUnsupported('CALL_DEPTH_LIMIT',token=method.token)
         if method.token in self.callchain:raise ILUnsupported('UNSUPPORTED_RECURSIVE_CALL',token=method.token)
@@ -656,7 +663,8 @@ class AbstractEvaluator:
                 ins=method.instructions.get(pc)
                 if ins is None:raise ILUnsupported('FALLTHROUGH_OUTSIDE_METHOD',offset=pc,token=method.token)
                 op,operand,next_pc=ins.opcode,ins.operand,ins.next_offset
-                if op==0:pass
+                if self._instruction(method,ins,stack):pass
+                elif op==0:pass
                 elif 2<=op<=5:stack.append(index(args,op-2))
                 elif op in (0x0e,0xfe09):stack.append(index(args,operand))
                 elif 6<=op<=9:stack.append(index(locals_,op-6))
