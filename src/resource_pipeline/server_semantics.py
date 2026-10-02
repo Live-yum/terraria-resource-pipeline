@@ -620,7 +620,7 @@ def _decode_resource(payload: bytes, name: str, limits: SemanticLimits) -> tuple
     return result, compression
 
 
-def _languages(meta: _Metadata) -> tuple[dict, list, dict, dict, dict]:
+def _languages(meta: _Metadata, requested_locales=None) -> tuple[dict, list, dict, dict, dict]:
     if meta.rows[40] > 4096:
         raise PipelineError('Manifest resource count exceeds limit')
     languages, inventory, locales, ambiguous = {}, [], {}, {}
@@ -661,6 +661,11 @@ def _languages(meta: _Metadata) -> tuple[dict, list, dict, dict, dict]:
             continue
         language = match.group(1)
         meta.checkpoint()
+        if requested_locales is not None and language not in requested_locales:
+            item.update(status='NOT_REQUESTED', language=language,
+                        reason='culture-outside-explicit-consumer-selection')
+            inventory.append(item)
+            continue
         if budget_exhausted:
             item.update(status='SKIPPED_RESOURCE_BUDGET', language=language, errorCode='RESOURCE_BUDGET_EXHAUSTED')
             inventory.append(item)
@@ -723,7 +728,8 @@ def _coverage(ids: dict, unsupported: list, locales: dict) -> dict:
 
 
 def extract_server_semantics(input_path: Path, limits: SemanticLimits = SemanticLimits(), checkpoint=None,
-                             item_stage_ids=None, il_limits: StaticILLimits = StaticILLimits()) -> dict:
+                             item_stage_ids=None, il_limits: StaticILLimits = StaticILLimits(),
+                             requested_locales=None) -> dict:
     """Return immutable-file-derived evidence; never infer complete semantics.
 
     The binary's own assembly version is a declaration, not authentication. The
@@ -731,6 +737,13 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
     """
     checkpoint = checkpoint or (lambda: None)
     checkpoint()
+    selected_locales = None
+    if requested_locales is not None:
+        if (type(requested_locales) not in (tuple, list) or not 1 <= len(requested_locales) <= 32
+                or any(type(value) is not str or not re.fullmatch(r'[a-z]{2}-[A-Za-z]{2,4}', value)
+                       for value in requested_locales)):
+            raise PipelineError('Invalid requested localization cultures')
+        selected_locales = frozenset((*requested_locales, 'en-US'))
     path = Path(input_path)
     if any(part.is_symlink() for part in (path, *path.parents)):
         raise PipelineError('Server input cannot traverse symlinks')
@@ -764,7 +777,7 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
         types = _types(meta)
         ids, evidence, unsupported, version_fields = _id_constants(meta, types)
         loader_methods = _loader_methods(meta, types)
-        languages, resources, locales, ambiguous, identical = _languages(meta)
+        languages, resources, locales, ambiguous, identical = _languages(meta, selected_locales)
         baselines = embedded_baselines(languages, resources, checkpoint=checkpoint, compact=True)
         compact_languages, localization, locale_evidence = compact_localization(languages, resources, locales, baselines, checkpoint=checkpoint)
         checkpoint()
@@ -857,6 +870,18 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
                             'client-textures', 'player-draw-rules', 'worldgen-runtime-rules',
                             'compressed-raw-deflate-resources', 'external-assembly-resource-resolution'],
             'sourcePolicy': 'Binary metadata declarations are evidence, not operator identity/version pins'}
+    if selected_locales is not None:
+        observed = {row['language'] for row in resources if 'language' in row}
+        result['localeSelection'] = {
+            'mode': 'explicit-consumer-cultures', 'requested': sorted(set(requested_locales)),
+            'effective': sorted(selected_locales), 'mandatoryFallback': 'en-US',
+            'observedSelected': sorted(observed & selected_locales),
+            'missingRequested': sorted(selected_locales - observed),
+            'notRequestedCultures': sorted(observed - selected_locales),
+            'notRequestedResourceRefs': [index for index, row in enumerate(resources)
+                                         if row.get('status') == 'NOT_REQUESTED'],
+            'otherCulturesComplete': False,
+        }
     # Apply the same guard to API callers and CLI users. No complete JSON string
     # or UTF-8 bytes are constructed before this size/cancellation preflight.
     try:

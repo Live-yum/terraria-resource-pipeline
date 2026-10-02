@@ -357,11 +357,11 @@ class StaticILResourceBoundTests(unittest.TestCase):
         huge='🦖'*1_000_000
         calls=[]
         import json
-        dumps=json.dumps
-        def bounded_dump(item,*args,**kwargs):
-            if isinstance(item,str):calls.append(len(item))
-            return dumps(item,*args,**kwargs)
-        with patch('resource_pipeline.static_il.json.dumps',side_effect=bounded_dump):
+        encode=json.encoder.encode_basestring
+        def bounded_encode(item):
+            calls.append(len(item))
+            return encode(item)
+        with patch('resource_pipeline.static_il.json.encoder.encode_basestring',side_effect=bounded_encode):
             with self.assertRaisesRegex(PipelineError,'EVIDENCE_JSON_BYTE_LIMIT'):json_evidence_size(huge,32)
         self.assertLessEqual(max(calls),4096)
         with self.assertRaises(PipelineError):json_evidence_size(float('nan'),100)

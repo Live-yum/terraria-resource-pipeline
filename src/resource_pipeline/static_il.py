@@ -64,7 +64,7 @@ def json_evidence_size(value, maximum, checkpoint=None):
     """
     if type(maximum) is not int or maximum<0:raise ValueError('Invalid evidence byte budget')
     checkpoint=checkpoint or (lambda:None)
-    total=0;ancestors=set()
+    total=0;ancestors=set();short_strings={}
     def add(size):
         nonlocal total
         total+=size
@@ -73,12 +73,28 @@ def json_evidence_size(value, maximum, checkpoint=None):
         checkpoint()
         if depth>128:raise PipelineError('Evidence JSON depth limit')
         if isinstance(item,str):
-            add(2)
-            for start in range(0,len(item),4096):
-                checkpoint()
-                # Two quotes per chunk are excluded; no escape crosses chunks.
-                add(len(json.dumps(item[start:start+4096],ensure_ascii=False).encode('utf-8'))-2)
-        elif item is None or type(item) in (bool,int,float):
+            # Immutable short values repeat heavily in evidence keys. Bound the
+            # per-call cache by both entries and scalar length; no container or
+            # caller-owned result is cached across validation calls.
+            cached=short_strings.get(item) if len(item)<=128 else None
+            if cached is not None:
+                add(cached)
+            else:
+                size=2
+                add(2)
+                for start in range(0,len(item),4096):
+                    checkpoint()
+                    # Standard JSON encoder, exact ensure_ascii=False escaping.
+                    part=len(json.encoder.encode_basestring(item[start:start+4096]).encode('utf-8'))-2
+                    add(part);size+=part
+                if len(item)<=128 and len(short_strings)<4096:short_strings[item]=size
+        elif item is None:
+            add(4)
+        elif type(item) is bool:
+            add(4 if item else 5)
+        elif type(item) is int:
+            add(len(str(item)))
+        elif type(item) is float:
             add(len(json.dumps(item,allow_nan=False).encode('utf-8')))
         elif type(item) in (dict,list,tuple):
             identity=id(item)

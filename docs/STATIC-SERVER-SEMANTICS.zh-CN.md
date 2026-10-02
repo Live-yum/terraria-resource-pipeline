@@ -68,3 +68,9 @@ PYTHONPATH=src python -m unittest discover -s tests -p test_server_semantics.py 
 模型使用全新 manager、无外部资源包、en-US 默认回退、ManifestResource 表顺序；先处理回退文化复制命令，再应用目标文化并处理复制命令。`$variant` 独立储存，目标文化加载清空回退 variants。复制仅匹配源码的两个 word 片段，缺引用替换为 key 文本并明确诊断；按源码最多 100 次替换，另有字符串/操作/总量安全上限，环与上限均输出明确 error。动态 VariableText 和全局替换不在本阶段计算。
 
 每个有效字符串具有资源顺序、locale、原始资源 SHA/文件偏移、JSON Pointer 与属性顺序证据。原始服务器语言相关方法仅读取 IL body 的偏移、长度与哈希，供后续核对；`binaryLoaderEquivalenceVerified=false`、`runtimeResourceOrderVerified=false` 明确保留。参考源码和服务器方法尚未完成语义等价验证，不以一份反编译源码冒充已经执行/验证原始游戏。
+
+### 按消费者选择文化
+
+`extract_server_semantics(..., requested_locales=None)` 默认仍处理全部嵌入文化。受信调用方可传入 1–32 个文化名称，例如 `('zh-Hans',)`；解析器自动加入 `en-US` 回退。当前小程序的配置、页面和数据生成器只消费简体中文及英文名称匹配，没有语言切换入口，故原始上传生产器使用这两种文化。以后可在受信生产器配置中显式增加文化，无需改变解码器或删除原始资源。
+
+所有资源仍读取边界并记录原始哈希与 ManifestResource 顺序；未请求文化记录为 `NOT_REQUESTED`，不会解压或解析其 JSON，也不计入已处理语言。`localeSelection` 明示请求、强制回退、实际存在、缺少及未请求文化和资源索引。该选择不改变任何字节、时间或内存上限，不证明所选字符串与游戏运行时加载完全等价，也不补齐动态说明。全文化默认路径和按需路径保留独立测试，所选文化解析出的字符串及展开来源证据必须一致。

@@ -10,6 +10,7 @@ import re
 from .adapters import file_digest, tree_inventory
 from .security import PipelineError, atomic_write, canonical_json, sha256
 from .static_il import bounded_evidence_json
+from .locale_mapping import extract_locale_mapping
 
 FAMILIES = {
     'items': r'Item_(\d+)', 'tiles': r'Tiles_(\d+)', 'walls': r'Wall_(\d+)',
@@ -34,6 +35,7 @@ class RawEvidenceProducer:
     adapter_id = 'terraria-static-metadata-and-raw-textures-v1'
 
     def __init__(self, inspect_server=None):
+        self._builtin_inspector = inspect_server is None
         if inspect_server is None:
             from .server_semantics import extract_server_semantics
             inspect_server = extract_server_semantics
@@ -50,18 +52,31 @@ class RawEvidenceProducer:
         executables = [server / row['path'] for row in inventories.get('server', []) if Path(row['path']).name == 'TerrariaServer.exe']
         if len(executables) > 4:
             raise PipelineError('Ambiguous server executable inventory')
-        assemblies, rejected = [], []
+        assemblies, rejected, mappings = [], [], []
         for index, path in enumerate(executables):
             checkpoint()
             digest = file_digest(path, checkpoint=checkpoint)
             try:
-                evidence = self.inspect_server(path, checkpoint=checkpoint)
+                options={'checkpoint':checkpoint}
+                if self._builtin_inspector:options['requested_locales']=('en-US','zh-Hans')
+                evidence = self.inspect_server(path, **options)
                 if evidence.get("input", {}).get("sha256") != digest:
                     raise PipelineError("Static metadata source changed")
             except PipelineError:
                 rejected.append({'sha256': digest, 'code': 'STATIC_METADATA_REJECTED'})
                 continue
-            atomic_write(output / f'server-{index}.json', bounded_evidence_json(evidence, 64 * 1024 * 1024, checkpoint))
+            encoded=bounded_evidence_json(evidence,64*1024*1024,checkpoint)
+            evidence_digest=sha256(encoded)
+            atomic_write(output / f'server-{index}.json',encoded)
+            mapping=extract_locale_mapping(path,evidence,server_evidence_sha256=evidence_digest,checkpoint=checkpoint)
+            mapping_encoded=bounded_evidence_json(mapping,16*1024*1024,checkpoint)
+            mapping_path=f'server-{index}-locale-mapping.json'
+            atomic_write(output/mapping_path,mapping_encoded)
+            mappings.append({'sourceSha256':digest,'path':mapping_path,'sha256':sha256(mapping_encoded),
+                'serverEvidenceSha256':evidence_digest,'ruleBindingStatus':mapping.get('ruleBinding',{}).get('status'),
+                'diagnostic':mapping.get('diagnostic'),
+                'channels':{name:{key:value for key,value in channel.items() if key not in ('records','unattemptedIds')}
+                            for name,channel in mapping['channels'].items()}})
             assemblies.append({'sha256': digest, 'evidence': evidence, 'path': f'server-{index}.json'})
         id_sets = {}
         for assembly in assemblies:
@@ -96,6 +111,10 @@ class RawEvidenceProducer:
                 'constantIds': len(ids), 'decodedImages': len(rows),
                 'idsWithoutDirectImage': sorted(ids - picture_ids),
                 'missingRules': missing_rules, 'complete': False}
+            coverage[family]['localizedSubcapabilities']=[{'sourceSha256':mapping['sourceSha256'],
+                'evidencePath':mapping['path'],'evidenceSha256':mapping['sha256'],
+                'channels':{name:channel for name,channel in mapping['channels'].items() if channel['family']==family}}
+                for mapping in mappings if any(channel['family']==family for channel in mapping['channels'].values())]
             if rows:
                 atomic_write(output / f'{family}-textures.json', canonical_json(rows))
         manifest = {'schemaVersion': 1, 'adapterId': self.adapter_id,
@@ -103,6 +122,7 @@ class RawEvidenceProducer:
             'publishable': False, 'inputBinding': bindings,
             'serverMetadata': [{k: v for k, v in item.items() if k != 'evidence'} for item in assemblies],
             'rejectedServerMetadata': rejected, 'familyCoverage': coverage,
+            'localeMappingEvidence':mappings,
             'unclassifiedDecodedImages': unclassified,
             'versionEvidence': [item['evidence'].get('gameVersionEvidence') for item in assemblies],
             'blockers': ['GAME_VERSION_AND_FULL_SEMANTICS_NOT_VERIFIED']}

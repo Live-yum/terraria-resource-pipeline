@@ -142,7 +142,8 @@ def embedded_baselines(languages, resources, *, string_limit=1024*1024,
     """
     checkpoint = checkpoint or (lambda: None)
     checkpoint()
-    locale_names = list(dict.fromkeys(row['language'] for row in resources if 'language' in row))
+    locale_names = list(dict.fromkeys(row['language'] for row in resources
+                                     if 'language' in row and row.get('status') != 'NOT_REQUESTED'))
     if len(locale_names) > 32 or len(resources) > 4096:
         raise PipelineError('Embedded locale/resource model count exceeds limit')
     result = {}
