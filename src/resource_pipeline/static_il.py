@@ -211,6 +211,15 @@ def decode_il(code: bytes, limits=StaticILLimits(), checkpoint=None) -> dict[int
 
 
 _KINDS={1:'void',2:'bool',3:'char',4:'i1',5:'u1',6:'i2',7:'u2',8:'i4',9:'u4',10:'i8',11:'u8',12:'r4',13:'r8',14:'other',24:'other',25:'other',28:'other'}
+_INTEGRAL_KINDS=frozenset(('bool','char','i1','u1','i2','u2','i4','u4','i8','u8'))
+_ENUM_KINDS=_INTEGRAL_KINDS-{'bool','char'}
+# Foreign owners are admitted only for direct, call-free, integer-only bodies.
+# Inspect every decoded instruction, including unreachable branches, before
+# using the existing path evaluator. No field/string/object access or calls.
+_PURE_INTEGER_OPS=frozenset((0,2,3,4,5,6,7,8,9,10,11,12,13,14,17,19,
+    *range(0x15,0x22),0x25,0x26,0x2a,*range(0x2b,0x46),
+    *range(0x58,0x6b),0x6d,0x6e,0xd1,0xd2,
+    0xfe01,0xfe02,0xfe03,0xfe04,0xfe05,0xfe09,0xfe0c,0xfe0e))
 
 
 def _compressed(blob, position):
@@ -221,17 +230,19 @@ def _compressed(blob, position):
     if not size or position+size-1>len(blob): raise ILUnsupported('INVALID_SIGNATURE_INTEGER')
     value=first & (0x3f if size==2 else 0x1f)
     for byte in blob[position:position+size-1]: value=(value<<8)|byte
+    if value<(0x80 if size==2 else 0x4000):raise ILUnsupported('INVALID_SIGNATURE_INTEGER')
     return value,position+size-1
 
 
-def _type(blob, position, depth=0):
+def _type(blob, position, depth=0, enum_resolver=None):
     if depth>16 or position>=len(blob): raise ILUnsupported('UNSUPPORTED_SIGNATURE_TYPE')
     element=blob[position];position+=1
     if element in _KINDS:return _KINDS[element],position
     if element in (0x0f,0x10,0x1d,0x45):
         _,position=_type(blob,position,depth+1);return 'other',position
     if element in (0x11,0x12,0x13,0x1e):
-        _,position=_compressed(blob,position);return 'other',position
+        coded,position=_compressed(blob,position)
+        return enum_resolver(coded) if element==0x11 and enum_resolver else 'other',position
     if element in (0x1f,0x20):
         _,position=_compressed(blob,position);return _type(blob,position,depth+1)
     if element==0x15:
@@ -251,15 +262,15 @@ def _type(blob, position, depth=0):
     raise ILUnsupported('UNSUPPORTED_SIGNATURE_TYPE')
 
 
-def method_signature(blob):
+def method_signature(blob, enum_resolver=None):
     if not blob or blob[0] not in (0,0x20):
         raise ILUnsupported('UNSUPPORTED_METHOD_SIGNATURE')
     count,pos=_compressed(blob,1)
     if count>64:raise ILUnsupported('SIGNATURE_ARGUMENT_LIMIT')
-    returned,pos=_type(blob,pos)
+    returned,pos=_type(blob,pos,enum_resolver=enum_resolver)
     args=[]
     for _ in range(count):
-        kind,pos=_type(blob,pos);args.append(kind)
+        kind,pos=_type(blob,pos,enum_resolver=enum_resolver);args.append(kind)
     if pos!=len(blob):raise ILUnsupported('SIGNATURE_TRAILING_BYTES')
     return bool(blob[0]&0x20),returned,tuple(args)
 
@@ -326,10 +337,13 @@ class Method:
 class MetadataProgram:
     """Resolve only data from this assembly; imported/generic calls stay closed."""
     def __init__(self,meta,types,limits=StaticILLimits(),checkpoint=None,evidence_budget=None):
-        self.meta,self.limits=meta,limits
+        self.meta,self.types,self.limits=meta,types,limits
         self.checkpoint=checkpoint or meta.checkpoint
         self.evidence_budget=evidence_budget or EvidenceBudget(limits.evidence_bytes,self.checkpoint)
         self.name_bytes=0
+        self.enum_cache={};self.enum_fields=0
+        self.metadata_scans=0;self.scanned_tables={};self.method_owners=None
+        self.foreign_owners={}
         self.checkpoint()
         found=[(rid,row) for rid,row in types.items() if row['fullName']=='Terraria.Item']
         if len(found)!=1:raise ILUnsupported('ITEM_TYPE_NOT_FOUND_OR_AMBIGUOUS')
@@ -388,22 +402,142 @@ class MetadataProgram:
             raise ILUnsupported('METADATA_NAME_BYTE_LIMIT')
         self.name_bytes+=size
 
+    def _scan(self):
+        """Share the existing metadata-index cap across added metadata reads."""
+        self.checkpoint()
+        if self.metadata_scans>=self.limits.method_index:
+            raise ILUnsupported('METADATA_SCAN_LIMIT')
+        self.metadata_scans+=1
+
+    def _table(self,table):
+        if table not in self.scanned_tables:
+            rows=[]
+            for rid in range(1,self.meta.rows[table]+1):
+                self._scan();row,_=self.meta.row(table,rid);rows.append(row)
+            self.scanned_tables[table]=rows
+        return self.scanned_tables[table]
+
+    def _enum(self,coded):
+        """Only a sealed local enum with one legal integral storage field.
+
+        Names alone do not identify the base: require an external core-library
+        TypeRef and its known public-key token, never a local System.Enum lookalike.
+        This validates metadata shape, not an assembly trust/signature claim.
+        """
+        if coded in self.enum_cache:return self.enum_cache[coded]
+        if not coded or coded&3 or coded>>2 not in self.types:return 'other',None
+        rid=coded>>2;typedef=self.types[rid];self._scan()
+        row,offset=self.meta.row(2,rid)
+        if row[0]&~0x102101 or not row[0]&0x100:
+            return 'other',None
+        if row[3]&3!=1 or not row[3]>>2:return 'other',None
+        self._scan();base,base_offset=self.meta.row(1,row[3]>>2)
+        base_name=self.meta.string(base[1]);base_ns=self.meta.string(base[2])
+        self._name(base_name);self._name(base_ns)
+        if (base_ns,base_name)!=('System','Enum') or base[0]&3!=2 or not base[0]>>2:
+            return 'other',None
+        self._scan();assembly,assembly_offset=self.meta.row(35,base[0]>>2)
+        assembly_name=self.meta.string(assembly[6]);self._name(assembly_name)
+        public_key,_=self.meta.blob(assembly[5])
+        core_keys={'mscorlib':bytes.fromhex('b77a5c561934e089'),
+                   'System.Private.CoreLib':bytes.fromhex('7cec85d7bea7798e'),
+                   'System.Runtime':bytes.fromhex('b03f5f7f11d50a3a')}
+        culture=self.meta.string(assembly[7]);self._name(culture)
+        if assembly[4] or culture or public_key!=core_keys.get(assembly_name):return 'other',None
+        if typedef['firstMethod']!=typedef['lastMethod']:return 'other',None
+        if any(r[2]==rid<<1 for r in self._table(42)):return 'other',None
+        first,last=typedef['firstField'],typedef['lastField']
+        if not 1<=first<last<=self.meta.rows[4]+1:return 'other',None
+        if any(first<=r[1]<last for r in self._table(16)) or any(r[2]==rid for r in self._table(15)):
+            return 'other',None
+        underlying=None;names=set()
+        for field in range(first,last):
+            self._scan()
+            if len(self.fields)+self.enum_fields>=self.limits.fields:raise ILUnsupported('FIELD_COUNT_LIMIT')
+            self.enum_fields+=1
+            values,field_offset=self.meta.row(4,field)
+            name=self.meta.string(values[1]);self._name(name)
+            if name in names:return 'other',None
+            names.add(name);signature,signature_offset=self.meta.blob(values[2])
+            if values[0]&0x10:
+                # Enum constants must be literal static fields of this enum.
+                if values[0]!=0x8056 or len(signature)<3 or signature[:2]!=b'\x06\x11':return 'other',None
+                target,end=_compressed(signature,2)
+                if target!=coded or end!=len(signature):return 'other',None
+                continue
+            if underlying is not None or name!='value__' or values[0]!=0x606 or len(signature)!=2 or signature[0]!=6:
+                return 'other',None
+            kind=_KINDS.get(signature[1])
+            if kind not in _ENUM_KINDS:return 'other',None
+            underlying=(kind,field,field_offset,signature_offset,signature)
+        if underlying is None:return 'other',None
+        kind,field,field_offset,signature_offset,signature=underlying
+        name=typedef['fullName'];self._name(name)
+        evidence={'typeToken':f'0x{0x02000000|rid:08x}','typeName':name,'underlyingType':kind,
+                  'typeMetadataOffset':offset,'baseTypeRefMetadataOffset':base_offset,
+                  'coreAssemblyRefMetadataOffset':assembly_offset,'coreAssemblyName':assembly_name,
+                  'valueFieldToken':f'0x{0x04000000|field:08x}','valueFieldMetadataOffset':field_offset,
+                  'valueSignatureOffset':signature_offset,'valueSignatureSha256':hashlib.sha256(signature).hexdigest()}
+        self.evidence_budget.charge(evidence)
+        self.enum_cache[coded]=(kind,evidence)
+        return kind,evidence
+
+    def _foreign_method(self,token):
+        if token>>24!=6 or not 1<=token&0xffffff<=self.meta.rows[6]:
+            raise ILUnsupported('UNSUPPORTED_EXTERNAL_OR_GENERIC_CALL',token=token)
+        if len(self.method_rows)>=self.limits.method_index:raise ILUnsupported('METHOD_INDEX_COUNT_LIMIT',token=token)
+        if self.method_owners is None:
+            owners=[];previous=1
+            for rid,owner in sorted(self.types.items()):
+                self._scan();first,last=owner['firstMethod'],owner['lastMethod']
+                if not previous<=first<=last<=self.meta.rows[6]+1:
+                    raise ILUnsupported('INVALID_METHOD_OWNER_RANGE',token=token)
+                previous=last;owners.append((first,last,rid))
+            self.method_owners=owners
+        candidates=[rid for first,last,rid in self.method_owners if first<=token&0xffffff<last]
+        if len(candidates)!=1:raise ILUnsupported('INVALID_METHOD_OWNER_RANGE',token=token)
+        rid=candidates[0];self._scan();owner,_=self.meta.row(2,rid)
+        if owner[0]&0x20 or owner[0]&7>1:
+            raise ILUnsupported('UNSUPPORTED_HELPER_OWNER',token=token)
+        if any(r[2] in (rid<<1,((token&0xffffff)<<1)|1) for r in self._table(42)):
+            raise ILUnsupported('UNSUPPORTED_EXTERNAL_OR_GENERIC_CALL',token=token)
+        row,offset=self.meta.row(6,token&0xffffff)
+        name=self.meta.string(row[3]);self._name(name)
+        owner_name=self.types[rid]['fullName'];self._name(owner_name)
+        self.foreign_owners[token]=owner_name
+        self.method_rows[token]=(row,offset,name)
+
     def get(self,token):
         self.checkpoint()
         if token in self.cache:
             value=self.cache[token]
             if isinstance(value,ILUnsupported):raise ILUnsupported(value.code,offset=value.offset,token=value.token)
             return value
-        if token not in self.method_rows:raise ILUnsupported('UNSUPPORTED_EXTERNAL_OR_GENERIC_CALL',token=token)
         if len(self.cache)>=self.limits.methods:raise ILUnsupported('METHOD_COUNT_LIMIT',token=token)
-        row,offset,name=self.method_rows[token]
         try:
+            if token not in self.method_rows:self._foreign_method(token)
+            row,offset,name=self.method_rows[token]
             if row[1]&3 or row[1]&4 or row[2]&0x2000 or row[2]&0x40:
                 raise ILUnsupported('UNSUPPORTED_NATIVE_OR_VIRTUAL_METHOD',token=token)
-            signature,_=self.meta.blob(row[4]);instance,returned,args=method_signature(signature)
+            enum_types={}
+            def resolve_enum(coded):
+                kind,evidence=self._enum(coded)
+                if evidence is not None:enum_types[coded]=evidence
+                return kind
+            signature,_=self.meta.blob(row[4]);instance,returned,args=method_signature(signature,resolve_enum)
             if bool(row[2]&0x10)==instance:raise ILUnsupported('INVALID_METHOD_THIS_FLAG',token=token)
-            if returned not in ('void','bool','char','i1','u1','i2','u2','i4','u4','i8','u8','r4','r8') or any(x=='other' for x in args):
+            if returned not in ('void','bool','char','i1','u1','i2','u2','i4','u4','i8','u8','r4','r8') or any(x in ('other','void') for x in args):
                 raise ILUnsupported('UNSUPPORTED_NONNUMERIC_HELPER_SIGNATURE',token=token)
+            foreign=token in self.foreign_owners
+            if foreign and (instance or returned not in _INTEGRAL_KINDS or any(x not in _INTEGRAL_KINDS for x in args)
+                            or name.startswith('.') or row[1]&~0x100 or row[2]&~0x97 or not 1<=row[2]&7<=6):
+                raise ILUnsupported('UNSUPPORTED_PURE_HELPER_SIGNATURE',token=token)
+            if foreign:
+                # Keep the new cross-owner route narrower than Item methods:
+                # only bare primitive integers, without modifiers or enum aliases.
+                codes={kind:code for code,kind in _KINDS.items() if kind in _INTEGRAL_KINDS}
+                if signature!=bytes((0,len(args),codes[returned],*(codes[kind] for kind in args))):
+                    raise ILUnsupported('UNSUPPORTED_PURE_HELPER_SIGNATURE',token=token)
             if not row[0]:raise ILUnsupported('METHOD_HAS_NO_IL',token=token)
             body=self.meta.rva(row[0],1);first=self.meta.reader.uint(body,1)
             local_token=0;initialized=False;max_stack=8
@@ -411,7 +545,9 @@ class MetadataProgram:
             elif first&3==3:
                 flags=self.meta.reader.uint(body,2);header=(flags>>12)*4
                 if flags&8:raise ILUnsupported('UNSUPPORTED_EXCEPTION_REGIONS',token=token)
+                if foreign and flags&~0xf013:raise ILUnsupported('INVALID_METHOD_HEADER',token=token)
                 if not 12<=header<=60:raise ILUnsupported('INVALID_METHOD_HEADER',token=token)
+                if foreign and header!=12:raise ILUnsupported('INVALID_METHOD_HEADER',token=token)
                 size=self.meta.reader.uint(body+4,4);max_stack=self.meta.reader.uint(body+2,2)
                 initialized=bool(flags&16);local_token=self.meta.reader.uint(body+8,4)
             else:raise ILUnsupported('UNSUPPORTED_METHOD_HEADER',token=token)
@@ -424,16 +560,31 @@ class MetadataProgram:
                 if not blob or blob[0]!=7:raise ILUnsupported('INVALID_LOCAL_SIGNATURE',token=token)
                 count,pos=_compressed(blob,1)
                 if count>self.limits.locals:raise ILUnsupported('LOCAL_COUNT_LIMIT',token=token)
-                for _ in range(count):kind,pos=_type(blob,pos);locals_.append(kind)
+                locals_start=pos
+                for _ in range(count):kind,pos=_type(blob,pos,enum_resolver=resolve_enum);locals_.append(kind)
                 if pos!=len(blob):raise ILUnsupported('SIGNATURE_TRAILING_BYTES',token=token)
+                if foreign and (any(kind not in _INTEGRAL_KINDS for kind in locals_) or
+                                blob[locals_start:]!=bytes(codes[kind] for kind in locals_)):
+                    raise ILUnsupported('UNSUPPORTED_PURE_HELPER_SIGNATURE',token=token)
             evidence={'methodToken':f'0x{token:08x}','methodName':name,'methodMetadataOffset':offset,
                       'bodyOffset':body,'codeOffset':code_offset,'codeBytes':size,'ilSha256':hashlib.sha256(code).hexdigest(),
                       'signatureSha256':hashlib.sha256(signature).hexdigest()}
+            if enum_types:evidence['enumTypes']=list(enum_types.values())
+            if foreign:
+                evidence['declaringType']=self.foreign_owners[token]
+                evidence['resolution']='same-assembly-call-free-integer-helper'
             self.evidence_budget.charge(evidence)
             if self.decoded_bytes+size>self.limits.total_method_bytes:raise ILUnsupported('TOTAL_METHOD_BYTE_LIMIT',token=token)
             instructions=decode_il(code,self.limits,self.checkpoint)
             if self.decoded_instructions+len(instructions)>self.limits.total_decoded_instructions:raise ILUnsupported('TOTAL_DECODED_INSTRUCTION_LIMIT',token=token)
             self.decoded_bytes+=size;self.decoded_instructions+=len(instructions)
+            if foreign:
+                if any(kind not in _INTEGRAL_KINDS for kind in locals_):
+                    raise ILUnsupported('UNSUPPORTED_PURE_HELPER_SIGNATURE',token=token)
+                for instruction in instructions.values():
+                    self.checkpoint()
+                    if instruction.opcode not in _PURE_INTEGER_OPS:
+                        raise ILUnsupported('UNSUPPORTED_IMPURE_HELPER_BODY',offset=instruction.offset,token=token)
             method=Method(token,name,instance,returned,args,instructions,
                           evidence,tuple(locals_),initialized,max_stack)
             self.cache[token]=method;self.used[token]=evidence
