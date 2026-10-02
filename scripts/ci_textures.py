@@ -78,6 +78,14 @@ def check_pixels(output):
             assert image.convert('RGBA').tobytes()==bytes([255,0,0,255])*image.width*image.height, path
 
 
+def check_surface_formats(receipt):
+    expected = {f'Test_{fmt}_{int(compressed)}.xnb': fmt for fmt in (0,4,5,6) for compressed in (False,True)}
+    expected['Huffman.xnb'] = 0
+    assert len(receipt['images']) == len(expected)
+    for row in receipt['images']:
+        assert row['surfaceFormat'] == expected[Path(row['input']).name]
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--dotnet',required=True,type=Path);parser.add_argument('--tool',required=True,type=Path);parser.add_argument('--sandbox',action='store_true');args=parser.parse_args()
     with tempfile.TemporaryDirectory() as temp:
@@ -110,6 +118,8 @@ def main():
             receipt=result['textures']['server']
             assert receipt['status']=='TEXTURES_DECODED',receipt
             assert receipt['imageCount']==9
+            check_surface_formats(receipt)
+            assert receipt['surfaceFormatCounts']=={'0':3,'4':2,'5':2,'6':2}
             assert receipt['isolation']=='bubblewrap-unshare-all'
             assert result['state']=='BLOCKED' and not result['extractionComplete']
             assert pipeline.current() is None
@@ -137,6 +147,7 @@ def main():
             subprocess.run(command,check=True,timeout=30)
             check_pixels(root/'output')
             receipt=json.loads((root/'output/texture-report.json').read_text());assert receipt['imageCount']==9
+            check_surface_formats(receipt)
             e8=bytearray(xnb(compressed=True));e8[20]|=128
             badcases=[('huffman-invalid-tree',compressed_huffman_xnb(bad_tree=True)),('match-overrun',compressed_huffman_xnb(overrun=True)),('e8-unsupported',bytes(e8))]
             for name,data in badcases+[('truncated',b'XNB'),('huge',xnb(w=4000000,h=1)[:100]),('invalidflags',xnb()[:5]+b'\x40'+xnb()[6:])]:

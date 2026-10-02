@@ -14,6 +14,23 @@ from .decoded_images import inspect_png
 from .security import PipelineError, atomic_write, canonical_json, read_json, sha256
 
 
+def texture_surface_formats(rows: list[dict]) -> dict[str, int]:
+    """Count only explicit supported format IDs; legacy receipts remain unknown."""
+    counts = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise PipelineError('Invalid texture format row')
+        if 'surfaceFormat' not in row:
+            key = 'unknown'
+        else:
+            value = row['surfaceFormat']
+            if type(value) is not int or value not in (0, 4, 5, 6):
+                raise PipelineError('Invalid texture SurfaceFormat receipt')
+            key = str(value)
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 @dataclass(frozen=True)
 class TextureTool:
     root: Path
@@ -70,6 +87,7 @@ class TextureExtractor:
                 or report.get('publishable') is not False
                 or report.get('extractionComplete') is not False):
             raise PipelineError('Incomplete or invalid texture conversion receipt')
+        format_counts = texture_surface_formats(rows)
         seen = set()
         for item in skipped:
             name = str(Path(item['input']).with_suffix('.png'))
@@ -95,7 +113,8 @@ class TextureExtractor:
         if tree_inventory(source, limits) != inventory:
             raise PipelineError('Original texture inputs changed')
         return {**report, 'status': 'TEXTURES_DECODED' if rows else 'NO_SUPPORTED_TEXTURES', 'isolation': plan.isolation,
-                'toolSha256': self.tool.sha256, 'outputSha256': tree_digest(job / 'output', limits)}
+                'toolSha256': self.tool.sha256, 'surfaceFormatCounts': format_counts,
+                'outputSha256': tree_digest(job / 'output', limits)}
 
 
 def configured_texture_extractor():
