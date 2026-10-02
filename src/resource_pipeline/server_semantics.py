@@ -20,7 +20,7 @@ import tempfile
 import zlib
 
 from .contracts import REQUIRED_SUBMANIFESTS
-from .locale_semantics import REFERENCE as LOCALE_REFERENCE, embedded_baselines
+from .locale_semantics import REFERENCE as LOCALE_REFERENCE, compact_localization, embedded_baselines
 from .security import PipelineError, canonical_json
 from .static_il import (StaticILLimits, bounded_evidence_json, extract_item_default_stages,
                         json_evidence_size, select_stage_sample)
@@ -537,13 +537,15 @@ def _json_document(payload: bytes, limits: SemanticLimits) -> dict:
     return result
 
 
-def _flatten_locale(document: dict, limits: SemanticLimits) -> tuple[dict[str, str], list, list, dict]:
+def _flatten_locale(document: dict, limits: SemanticLimits) -> tuple[dict[str, str], list, list, dict, dict]:
     """The pinned loader deserializes Dictionary<string,Dictionary<string,string>>.
 
     Later duplicate dictionary assignments replace earlier ones. They are input
     semantics only: our emitted JSON still has unique keys and canonical form.
     """
     diagnostics, identical, evidence, output = [], [], {}, {}
+    raw_document = {'categories': [], 'entries': []}
+    raw_indices = {}
     def pointer(parts):
         return '/' + '/'.join(part.replace('~', '~0').replace('/', '~1') for part in parts)
     def duplicates(node, path, parent_ordinals):
@@ -568,11 +570,14 @@ def _flatten_locale(document: dict, limits: SemanticLimits) -> tuple[dict[str, s
         if not isinstance(entries, _LocaleObject):
             raise PipelineError('Localization category must be a string dictionary')
         duplicates(entries, (category,), [category_ordinal])
-        for name, value in entries.pairs:
+        raw_document['categories'].append(category)
+        for property_ordinal, (name, value) in enumerate(entries.pairs):
             if not isinstance(value, str):
                 raise PipelineError('Unsupported non-string typed localization value')
             if not category or not name or len(category + '.' + name) > limits.string_bytes:
                 raise PipelineError('Invalid or oversized localization key')
+            raw_indices[(category_ordinal, property_ordinal)] = len(raw_document['entries'])
+            raw_document['entries'].append([category_ordinal, property_ordinal, name, value])
     for category, entries in document.items():
         for name, value in entries.items():
             key = category + '.' + name
@@ -586,10 +591,11 @@ def _flatten_locale(document: dict, limits: SemanticLimits) -> tuple[dict[str, s
             evidence[key] = {'jsonPointer': pointer((category, name)),
                              'categoryOrdinal': document.selected_ordinals[category],
                              'propertyOrdinal': entries.selected_ordinals[name],
+                             'rawEntryIndex': raw_indices[(document.selected_ordinals[category], entries.selected_ordinals[name])],
                              'valueSha256': hashlib.sha256(value.encode('utf-8')).hexdigest()}
             if len(output) > limits.locale_keys:
                 raise _ResourceBudgetError('Localization key count exceeds limit')
-    return output, diagnostics, identical, evidence
+    return output, diagnostics, identical, evidence, raw_document
 
 
 def _decode_resource(payload: bytes, name: str, limits: SemanticLimits) -> tuple[bytes, str]:
@@ -664,8 +670,8 @@ def _languages(meta: _Metadata) -> tuple[dict, list, dict, dict, dict]:
             decoded_total += len(decoded)
             if decoded_total > meta.limits.decoded_total_bytes:
                 raise _ResourceBudgetError('Total localization decoded bytes exceed limit')
-            flat, local_ambiguity, local_identical, key_evidence = _flatten_locale(_json_document(decoded, meta.limits), meta.limits)
-            key_total += len(flat) + sum(row['occurrences'] for row in local_ambiguity)
+            flat, local_ambiguity, local_identical, key_evidence, raw_document = _flatten_locale(_json_document(decoded, meta.limits), meta.limits)
+            key_total += len(raw_document['entries']) + len(raw_document['categories'])
             if key_total > meta.limits.locale_keys:
                 raise _ResourceBudgetError('Total localization key count exceeds limit')
             merged = locales.setdefault(language, {})
@@ -683,7 +689,8 @@ def _languages(meta: _Metadata) -> tuple[dict, list, dict, dict, dict]:
                         language=language, compression=compression, ambiguousKeyCount=len(local_ambiguity) + len(duplicates),
                         identicalDuplicateKeyCount=len(local_identical),
                         decodedBytes=len(decoded), decodedSha256=hashlib.sha256(decoded).hexdigest(), keyCount=len(flat))
-            languages[name] = {'language': language, 'strings': flat, 'duplicateKeys': local_ambiguity, 'keyEvidence': key_evidence, 'evidence': dict(item)}
+            languages[name] = {'language': language, 'strings': flat, 'document': raw_document,
+                               'duplicateKeys': local_ambiguity, 'keyEvidence': key_evidence, 'evidence': dict(item)}
         except _ResourceBudgetError:
             budget_exhausted = True
             item.update(status='REJECTED_RESOURCE', language=language, errorCode='RESOURCE_BUDGET_EXHAUSTED')
@@ -758,7 +765,8 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
         ids, evidence, unsupported, version_fields = _id_constants(meta, types)
         loader_methods = _loader_methods(meta, types)
         languages, resources, locales, ambiguous, identical = _languages(meta)
-        baselines = embedded_baselines(languages, resources, checkpoint=checkpoint)
+        baselines = embedded_baselines(languages, resources, checkpoint=checkpoint, compact=True)
+        compact_languages, localization, locale_evidence = compact_localization(languages, resources, locales, baselines, checkpoint=checkpoint)
         checkpoint()
         positive_ids = sorted({value for name,value in ids.get('ItemID', {}).items()
                                if name.casefold() != 'count' and type(value) is int and value > 0})
@@ -819,7 +827,7 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
                         'method': 'CLI-Assembly-table', 'assemblyMetadataOffset': assembly_offset,
                         'versionFileOffset': assembly_offset + 4, 'literalFields': version_fields}
     checkpoint()
-    result = {'schemaVersion': 1, 'extractor': 'static-pe-cli-python-v1',
+    result = {'schemaVersion': 2, 'extractor': 'static-pe-cli-python-v2',
             'status': 'PARTIAL', 'executedInput': False, 'complete': False, 'publishable': False,
             'inputSha256': hashlib.sha256(data).hexdigest(), 'inputBytes': len(data),
             'input': {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)},
@@ -828,17 +836,14 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
             'loaderMethodEvidence': loader_methods, 'itemDefaultStages': item_stages,
             'localeRuleEvidence': {**LOCALE_REFERENCE, 'binaryLoaderEquivalenceVerified': False,
                                    'jsonNetEmbeddedReferenceMatch': any(row.get('sha256') == LOCALE_REFERENCE['jsonNetReferenceSha256'] for row in resources)},
-            'localization': {locale: {'strings': baselines[locale]['strings'], 'rawStrings': dict(sorted(rows.items())),
-                                     'baseline': baselines[locale],
-                                     'resources': [row for row in resources if row.get('language') == locale]}
-                             for locale, rows in sorted(locales.items())},
+            'localization': localization, 'localeEvidence': locale_evidence,
             'assemblyName': assembly_name, 'gameVersion': version,
             'versionEvidence': version_evidence,
             'metadata': {'cliHeaderOffset': meta.cli_offset, 'metadataOffset': meta.metadata_offset,
                          'runtimeVersion': meta.runtime_version,
                          'tableRows': {str(key): value for key, value in meta.rows.items() if value}},
             'ids': ids, 'idEvidence': evidence, 'aliases': aliases, 'literalCounts': counts,
-            'unsupportedFields': unsupported, 'languages': languages, 'resources': resources,
+            'unsupportedFields': unsupported, 'languages': compact_languages, 'resources': resources,
             'localeDiagnostics': {'englishKeys': len(english), 'chineseKeys': len(chinese),
                                   'missingChineseKeys': sorted(set(english) - set(chinese)),
                                   'missingEnglishKeys': sorted(set(chinese) - set(english)),

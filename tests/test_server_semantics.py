@@ -13,7 +13,8 @@ from unittest.mock import patch
 import zlib
 
 from resource_pipeline.security import PipelineError
-from resource_pipeline.server_semantics import SemanticLimits, _Metadata, _types, extract_server_semantics, main
+from resource_pipeline.server_semantics import SemanticLimits, _Metadata, _languages, _types, extract_server_semantics, main
+from resource_pipeline.locale_semantics import embedded_baselines, locale_copy_passes, reconstruct_raw_locale, resolve_locale_source
 
 
 def synthetic_pe(*, resources=None, pe64=False, bad_signature=False, repeated_types=0, repeated_name='RepeatedFixture'):
@@ -200,7 +201,8 @@ class ServerSemanticsTests(unittest.TestCase):
         self.assertFalse(result['complete'])
         result = self.extract(synthetic_pe(resources={name:b'{"C":{"A":"old"},"C":{"B":"new"}}'}))
         self.assertEqual({'C.B':'new'},result['localization']['en-US']['strings'])
-        self.assertEqual(1,result['localization']['en-US']['baseline']['keyEvidence']['C.B']['categoryOrdinal'])
+        source=resolve_locale_source(result['languages'],result['resources'],result['localization']['en-US']['baseline']['keyEvidence']['C.B'])
+        self.assertEqual(1,source['categoryOrdinal'])
 
     def test_equal_duplicate_values_are_proven_and_conflicts_select_last(self):
         name = 'Terraria.Localization.Content.en-US.Main.json'
@@ -235,8 +237,68 @@ class ServerSemanticsTests(unittest.TestCase):
         self.assertEqual({'C.A':'last'},result['localization']['en-US']['strings'])
         self.assertEqual(1,len(result['localeDiagnostics']['duplicateSelectionEvidence']['en-US']))
         choice = result['localization']['en-US']['baseline']['resourceOverrides'][0]
-        self.assertEqual(0,choice['previous']['resourceOrder'])
-        self.assertEqual(1,choice['selected']['resourceOrder'])
+        self.assertEqual(0,resolve_locale_source(result['languages'],result['resources'],choice[0])['resourceOrder'])
+        self.assertEqual(1,resolve_locale_source(result['languages'],result['resources'],choice[1])['resourceOrder'])
+
+    def test_compact_locale_evidence_reconstructs_raw_order_and_full_model(self):
+        resources={
+            'Terraria.Localization.Content.en-US.Z.json': b'{"C":{"A":"first","A":"last","Base":"base","Copy":"{$C.Base}","Missing":"{$No.Key}","V$One":"v1"},"Gone":{"Old":"discarded"},"Gone":{},"Dot.C":{"K":"collides"},"Dot":{"C.K":"selected"}}',
+            'Terraria.Localization.Content.en-US.A.json': b'{"C":{"A":"second-resource","Keep":"fallback","V$One":"v2"}}',
+            'Terraria.Localization.Content.zh-Hans.Main.json': b'{"C":{"A":"target","Base":"target-base","New":"{$C.Base}","V$Two$Ignored":"target-variant","Loop":"{$C.Loop}"}}',
+            'Terraria.Localization.Content.fr-FR.Main.json': b'{"C":{"A":"bonjour"}}',
+        }
+        data=synthetic_pe(resources=resources)
+        languages,inventory,raw,_,_=_languages(_Metadata(data,SemanticLimits()))
+        expanded=embedded_baselines(languages,inventory)
+        result=self.extract(data)
+        self.assertEqual(2,result['schemaVersion'])
+        self.assertEqual(2,result['localeEvidence']['schemaVersion'])
+        self.assertFalse(result['localeEvidence']['binaryLoaderEquivalenceVerified'])
+        # Source values omitted by duplicate/category selection still survive.
+        first=result['languages'][next(iter(resources))]['document']
+        self.assertIn('discarded',[row[3] for row in first['entries']])
+        self.assertIn('first',[row[3] for row in first['entries']])
+        self.assertEqual(2,first['categories'].count('Gone'))
+        for locale,value in result['localization'].items():
+            reconstructed=reconstruct_raw_locale(result['languages'],result['resources'],value['rawSource']['resourceRefs'])
+            self.assertEqual(raw[locale],reconstructed)
+            from resource_pipeline.security import canonical_json
+            self.assertEqual(hashlib.sha256(canonical_json(reconstructed)).hexdigest(),value['rawSource']['canonicalStringsSha256'])
+            self.assertEqual(len(reconstructed),value['rawSource']['keyCount'])
+            self.assertNotIn('rawStrings',value)
+            self.assertNotIn('strings',value['baseline'])
+            self.assertEqual('/localization/'+locale+'/strings',value['baseline']['stringsRef'])
+            old=expanded[locale];new=value['baseline']
+            self.assertEqual(old['strings'],value['strings'])
+            self.assertEqual(old['copyPasses'],locale_copy_passes(result,locale))
+            for key in ('fallbackKeys','loadErrors','status','binaryLoaderEquivalenceVerified','runtimeResourceOrderVerified','dynamicVariableTextEvaluated','complete'):
+                self.assertEqual(old[key],new[key])
+            self.assertEqual(old['keyEvidence'],{key:resolve_locale_source(result['languages'],result['resources'],ref) for key,ref in new['keyEvidence'].items()})
+            self.assertEqual(len(old['resourceOverrides']),len(new['resourceOverrides']))
+            for before,after in zip(old['resourceOverrides'],new['resourceOverrides']):
+                self.assertEqual(before['previous'],resolve_locale_source(result['languages'],result['resources'],after[0]))
+                self.assertEqual(before['selected'],resolve_locale_source(result['languages'],result['resources'],after[1]))
+            self.assertEqual(old['variants'],{key:{**variant,'evidence':resolve_locale_source(result['languages'],result['resources'],variant['evidence'])} for key,variant in new['variants'].items()})
+        # The identical fallback copy pass is represented once across cultures.
+        refs=[value['baseline']['copyPassRefs'][0] for value in result['localization'].values()]
+        self.assertEqual(1,len(set(refs)))
+
+    def test_compact_order_survives_canonical_json_key_sorting_and_bad_resource(self):
+        data=synthetic_pe(resources={
+            'Terraria.Localization.Content.en-US.Z.json': b'{"C":{"Z":"{$C.A}","A":"{$C.B}","B":"value"}}',
+            'Terraria.Localization.Content.en-US.Bad.json': b'{"bad":7}',
+            'Terraria.Localization.Content.en-US.A.json': b'{"C":{"A":"raw-only-after-bad-resource"}}',
+            'Terraria.Localization.Content.zh-Hans.Main.json': b'{"C":{"B":"target"}}',
+        })
+        result=self.extract(data)
+        from resource_pipeline.security import canonical_json
+        reloaded=json.loads(canonical_json(result))
+        for locale,value in reloaded['localization'].items():
+            raw=reconstruct_raw_locale(reloaded['languages'],reloaded['resources'],value['rawSource']['resourceRefs'])
+            self.assertEqual(value['rawSource']['canonicalStringsSha256'],hashlib.sha256(canonical_json(raw)).hexdigest())
+        self.assertEqual('value',reloaded['localization']['en-US']['strings']['C.A'])
+        self.assertEqual('raw-only-after-bad-resource',reconstruct_raw_locale(reloaded['languages'],reloaded['resources'],reloaded['localization']['en-US']['rawSource']['resourceRefs'])['C.A'])
+        self.assertEqual('CULTURE_LOAD_STOPPED_AT_BAD_RESOURCE',reloaded['localization']['en-US']['baseline']['loadErrors'][0]['code'])
 
     def test_wrong_signature_is_classified_not_invented(self):
         result = self.extract(synthetic_pe(bad_signature=True))

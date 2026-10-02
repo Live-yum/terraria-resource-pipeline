@@ -10,6 +10,7 @@ import re
 import unicodedata
 
 from .security import PipelineError
+from .static_il import bounded_evidence_json
 
 REFERENCE = {
     'repository': 'Live-yum/TerrariaDecompiledSource',
@@ -132,7 +133,7 @@ def _copy_commands(strings, provenance, *, string_limit, total_limit, operation_
 
 
 def embedded_baselines(languages, resources, *, string_limit=1024*1024,
-                       total_limit=64*1024*1024, operation_limit=1_000_000, checkpoint=None):
+                       total_limit=64*1024*1024, operation_limit=1_000_000, checkpoint=None, compact=False):
     """Model a fresh manager: default en-US then one target, no content packs.
 
     Resource table order is retained explicitly. Runtime enumeration order,
@@ -147,7 +148,7 @@ def embedded_baselines(languages, resources, *, string_limit=1024*1024,
     result = {}
     for target in locale_names:
         checkpoint()
-        strings, provenance = {'': ''}, {'': {'origin': 'LocalizedText.Empty'}}
+        strings, provenance = {'': ''}, {'': None if compact else {'origin': 'LocalizedText.Empty'}}
         variants, decisions, load_errors = {}, [], []
         passes = []
         phases = ['en-US'] if target == 'en-US' else ['en-US', target]
@@ -163,10 +164,16 @@ def embedded_baselines(languages, resources, *, string_limit=1024*1024,
                 document = languages[row['name']]
                 for key, value in document['strings'].items():
                     checkpoint()
-                    proof = {'resource': row['name'], 'resourceOrder': resource_index,
-                             'sourceLocale': phase, 'resourceSha256': row['sha256'],
-                             'dataOffset': row['dataOffset'],
-                             **document.get('keyEvidence', {}).get(key, {})}
+                    if compact:
+                        entry = document.get('keyEvidence', {}).get(key, {}).get('rawEntryIndex')
+                        if type(entry) is not int or not 0 <= entry < len(document.get('document', {}).get('entries', [])):
+                            raise PipelineError('Compact locale provenance requires an ordered raw entry')
+                        proof = [resource_index, entry]
+                    else:
+                        proof = {'resource': row['name'], 'resourceOrder': resource_index,
+                                 'sourceLocale': phase, 'resourceSha256': row['sha256'],
+                                 'dataOffset': row['dataOffset'],
+                                 **document.get('keyEvidence', {}).get(key, {})}
                     if '$' in key:
                         parts = key.split('$')
                         variant_key = parts[0] + '$' + parts[1]
@@ -174,7 +181,8 @@ def embedded_baselines(languages, resources, *, string_limit=1024*1024,
                                                  'value': value, 'evidence': proof}
                         continue
                     if key in strings:
-                        decisions.append({'key': key, 'previous': provenance[key], 'selected': proof,
+                        decisions.append([provenance[key], proof] if compact else
+                                         {'key': key, 'previous': provenance[key], 'selected': proof,
                                           'rule': 'LanguageManager.UpdateTextValue-in-resource-order'})
                     strings[key] = value
                     provenance[key] = proof
@@ -182,7 +190,8 @@ def embedded_baselines(languages, resources, *, string_limit=1024*1024,
                                   total_limit=total_limit, operation_limit=operation_limit, checkpoint=checkpoint)
             passes.append({'culture': phase, **copy})
         fallback_keys = [key for key, proof in provenance.items()
-                         if key and target != 'en-US' and proof.get('sourceLocale') == 'en-US']
+                         if key and target != 'en-US' and
+                         (resources[proof[0]]['language'] if compact else proof.get('sourceLocale')) == 'en-US']
         strings.pop('', None)
         provenance.pop('', None)
         result[target] = {'strings': strings, 'keyEvidence': provenance,
@@ -194,3 +203,93 @@ def embedded_baselines(languages, resources, *, string_limit=1024*1024,
                           'runtimeResourceOrderVerified': False, 'externalContentSourcesApplied': False,
                           'dynamicVariableTextEvaluated': False, 'complete': False}
     return result
+
+
+def compact_localization(languages, resources, locales, baselines, *, checkpoint=None):
+    """Schema v2: retain ordered raw text once and use explicit source references.
+
+    Every category occurrence (including empty/replaced categories), property
+    occurrence, variant value and duplicate order is retained in document arrays.
+    Effective strings remain directly accessible on each localization object.
+    """
+    checkpoint = checkpoint or (lambda: None)
+    resource_indices = {row['name']: index for index, row in enumerate(resources)}
+    compact_languages = {}
+    for name, document in languages.items():
+        checkpoint()
+        compact_languages[name] = {'language': document['language'], 'resourceRef': resource_indices[name],
+                                   'document': document['document'], 'duplicateKeys': document['duplicateKeys']}
+    localization, copy_passes = {}, []
+    for locale, raw in sorted(locales.items()):
+        checkpoint()
+        baseline = baselines[locale]
+        refs = []
+        for evidence in baseline['copyPasses']:
+            checkpoint()
+            existing = next((index for index, prior in enumerate(copy_passes) if prior == evidence), None)
+            if existing is None:
+                existing = len(copy_passes);copy_passes.append(evidence)
+            refs.append(existing)
+        selected_resources = [row for row in resources if row.get('language') == locale]
+        localization[locale] = {
+            'strings': baseline['strings'],
+            'rawSource': {'resourceRefs': [resource_indices[row['name']] for row in selected_resources if row['name'] in languages],
+                          'keyCount': len(raw), 'canonicalStringsSha256': hashlib.sha256(bounded_evidence_json(raw,64*1024*1024,checkpoint)).hexdigest()},
+            'baseline': {**{key:value for key,value in baseline.items() if key not in ('strings','copyPasses')},
+                         'stringsRef': '/localization/' + locale.replace('~','~0').replace('/','~1') + '/strings',
+                         'copyPassRefs': refs},
+            'resources': selected_resources,
+        }
+    evidence = {'schemaVersion': 2, 'sourceReference': '[resources index, languages[resource.name].document.entries index]',
+                'documentEntryFields': ['categoryOrdinal','propertyOrdinal','name','value'],
+                'categoryOrder': 'document.categories preserves every original category occurrence, including empty categories',
+                'entryOrder': 'entries preserves original category/property order, including overwritten duplicates',
+                'keyEvidenceRule': 'Resolve source reference; form key as category + dot + name; hash original UTF-8 value',
+                'resourceOverrideFields': ['previousSourceRef','selectedSourceRef'],
+                'resourceOverrideRule': 'LanguageManager.UpdateTextValue-in-resource-order; key comes from selected entry',
+                'rawMergeRule': 'Json.NET last dictionary assignment, then ordered category/property flattening, then resource order',
+                'copyPasses': copy_passes, 'binaryLoaderEquivalenceVerified': False}
+    return compact_languages, localization, evidence
+
+
+def resolve_locale_source(languages, resources, reference):
+    """Reconstruct the full old per-key provenance without repeated metadata."""
+    if reference is None:return {'origin':'LocalizedText.Empty'}
+    if not isinstance(reference,(list,tuple)) or len(reference)!=2 or any(type(n) is not int for n in reference):
+        raise PipelineError('Invalid locale source reference')
+    resource_index,entry_index=reference
+    if not 0<=resource_index<len(resources):raise PipelineError('Invalid locale resource reference')
+    resource=resources[resource_index]
+    document=languages[resource['name']]['document']
+    if not 0<=entry_index<len(document['entries']):raise PipelineError('Invalid locale entry reference')
+    category_ordinal,property_ordinal,name,value=document['entries'][entry_index]
+    category=document['categories'][category_ordinal]
+    pointer='/'+'/'.join(part.replace('~','~0').replace('/','~1') for part in (category,name))
+    return {'resource':resource['name'],'resourceOrder':resource_index,'sourceLocale':resource['language'],
+            'resourceSha256':resource['sha256'],'dataOffset':resource['dataOffset'],
+            'jsonPointer':pointer,'categoryOrdinal':category_ordinal,'propertyOrdinal':property_ordinal,
+            'rawEntryIndex':entry_index,'valueSha256':_digest(value)}
+
+
+def reconstruct_raw_locale(languages, resources, resource_refs, *, checkpoint=None):
+    """Reconstruct rawStrings, including whole-category replacement semantics."""
+    checkpoint=checkpoint or (lambda:None)
+    merged={}
+    for index in resource_refs:
+        checkpoint()
+        if type(index) is not int or not 0<=index<len(resources):raise PipelineError('Invalid raw locale resource reference')
+        document=languages[resources[index]['name']]['document']
+        categories=document['categories'];occurrences=[{} for _ in categories]
+        for category_ordinal,property_ordinal,name,value in document['entries']:
+            checkpoint()
+            occurrences[category_ordinal][name]=value
+        selected={}
+        for category,entries in zip(categories,occurrences):selected[category]=entries
+        for category,entries in selected.items():
+            for name,value in entries.items():merged[category+'.'+name]=value
+    return merged
+
+
+def locale_copy_passes(result, locale):
+    baseline=result['localization'][locale]['baseline']
+    return [result['localeEvidence']['copyPasses'][index] for index in baseline['copyPassRefs']]

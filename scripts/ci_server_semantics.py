@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from resource_pipeline.server_semantics import SemanticLimits, extract_server_semantics
 from resource_pipeline.static_il import bounded_evidence_json
+from resource_pipeline.locale_semantics import locale_copy_passes
 from resource_pipeline.security import PipelineError, canonical_json
 
 SOURCE_REPOSITORY = 'Live-yum/TerrariaServerHook'
@@ -82,14 +83,15 @@ def redact(result: dict) -> dict:
         if not re.fullmatch(r'[a-z]{2}-[A-Za-z]{2,4}', locale):
             raise PipelineError('Unexpected locale identifier')
         strings = value['strings']
+        copy_passes = locale_copy_passes(result,locale)
         locales[locale] = {
-            'keyCount': len(strings), 'rawKeyCount': len(value['rawStrings']),
+            'keyCount': len(strings), 'rawKeyCount': value['rawSource']['keyCount'],
             'fallbackKeyCount': len(value['baseline']['fallbackKeys']),
             'variantCount': len(value['baseline']['variants']),
             'sourceModelStatus': value['baseline']['status'],
-            'modelErrorCount': len(value['baseline']['loadErrors']) + sum(len(row['errors']) for row in value['baseline']['copyPasses']),
-            'missingReferenceCount': sum(len(row['missingReferences']) for row in value['baseline']['copyPasses']),
-            'copyExpandedKeyCount': sum(len(row['copyEvidence']) for row in value['baseline']['copyPasses']),
+            'modelErrorCount': len(value['baseline']['loadErrors']) + sum(len(row['errors']) for row in copy_passes),
+            'missingReferenceCount': sum(len(row['missingReferences']) for row in copy_passes),
+            'copyExpandedKeyCount': sum(len(row['copyEvidence']) for row in copy_passes),
             'contentSha256': hashlib.sha256(canonical_json(strings)).hexdigest(),
             'keyValueSamples': [{'keySha256': digest_text(key), 'valueSha256': digest_text(text),
                                  'valueUtf8Bytes': len(text.encode('utf-8'))}
@@ -110,9 +112,9 @@ def redact(result: dict) -> dict:
     for resource in result['resources']:
         statuses[resource['status']] = statuses.get(resource['status'], 0) + 1
     return {
-        'schemaVersion': 1, 'status': 'PARTIAL', 'executedInput': False,
+        'schemaVersion': 2, 'status': 'PARTIAL', 'executedInput': False,
         'complete': False, 'publishable': False, 'rawStringsIncluded': False, 'rawBinaryIncluded': False,
-        'extractor': 'static-pe-cli-python-v1',
+        'extractor': result['extractor'], 'localeEvidenceSchemaVersion': result['localeEvidence']['schemaVersion'],
         'source': {'repository': SOURCE_REPOSITORY, 'commit': SOURCE_COMMIT, 'path': SOURCE_PATH,
                    'gitBlobSha1': SOURCE_BLOB, **result['input']},
         'assemblyVersion': version,

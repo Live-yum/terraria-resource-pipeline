@@ -14,17 +14,33 @@
 
 ## 桥接输出
 
+- 顶层 `schemaVersion=2`、`extractor=static-pe-cli-python-v2`；语言引用格式另标记 `localeEvidence.schemaVersion=2`
 - `input`: SHA-256 与输入字节数
 - `assembly`、`gameVersionEvidence`: 版本及其元数据位置，明确 `trusted=false`
 - `idFamilies`: items/tiles/walls/paints/npcs/buffs/prefixes/player 等分组中的 `records`、`countConstants` 与不支持字段
 - `localization`: 按 locale 的字符串字典与资源证据；原始文本只能留在私有任务目录
 - `coverage`: 所有资源家族的提取计数与缺口；任何家族都不视为完整
 
+### 语言证据 v2：可重建引用
+
+`localization[locale].strings` 仍直接提供有效字符串字典。为在固定 64 MiB 原始证据上限内保留真实数据，逐键来源改为引用按 ManifestResource 顺序排列的 `resources` 和 `languages[resourceName].document`，不再为每个 key 重复资源元数据。`document` 保留完整、有序的原始类别与属性；locale 级 `resources` 和 variant `value` 视图仍保留。
+
+- `document.categories` 按原输入顺序保留每一次类别出现，包括空类别及被后续同名类别替换的类别
+- `document.entries` 按原输入顺序保存 `[categoryOrdinal, propertyOrdinal, name, value]`；被重复属性/类别覆盖的值也完整保留
+- `baseline.keyEvidence[key]` 与 variant 的 `evidence` 使用 `[resourceIndex, entryIndex]`；由资源表与原始 entry 可准确恢复资源 locale/顺序/hash/offset、JSON Pointer、类别/属性顺序及 UTF-8 value hash
+- `baseline.resourceOverrides` 按选择顺序保存 `[previousSourceRef, selectedSourceRef]`；key 可从 selected entry 的类别及名称重建，统一规则在 `localeEvidence.resourceOverrideRule` 中声明
+- `baseline.stringsRef` 指向同 locale 的有效 `strings`；原 `rawStrings` 由 `rawSource.resourceRefs`、两级字典最后赋值和资源顺序重建，`keyCount` 与 `canonicalStringsSha256` 校验结果
+- `baseline.copyPassRefs` 引用 `localeEvidence.copyPasses`；仅结构完全相同的 pass 共用一项，因此 en-US 回退的复制证明无需在每个目标文化中复制。所有缺引用、循环、替换次数、稳定性与错误仍保留
+
+`resolve_locale_source`、`reconstruct_raw_locale`、`locale_copy_passes` 提供原始来源与 raw/copy 视图的重建。数组保留顺序，输出 canonical JSON 对对象 key 排序不会改变重建结果。v2 是证据表示变化，不扩大加载器/运行时等价声明；`binaryLoaderEquivalenceVerified` 始终为 false。
+
 静态常量不等同于全部有效游戏对象。非字面量、动态字段、item defaults、装备绘制、地图着色语义、世界生成规则、运行时工具提示、动态 VariableText 插值与客户端纹理均不补造。嵌入语言的 en-US 回退与 {$Category.Key} 复制命令仅按固定源码模型计算，不能等同于服务器执行验证。缺少 XNB 不会被服务端文件或常量替代。
 
 ## 限制与拒绝
 
 默认最多 128 MiB 输入、64 MiB 元数据、100 万条元数据行、64 MiB 资源区、单资源/解压 16 MiB、合计解压 64 MiB、50 万语言键、64 层 JSON。限制均来自调用方的受信配置，不取自上传清单。拒绝截断、越界、重复表关联、元数据流重叠、压缩炸弹/拼接流、符号链接、非字符串语言值。真实语言 JSON 的重复键、扁平化冲突和跨文件重复键以显式 diagnostics 记录；采用固定 LanguageManager 的两级字典加载形状和 Json.NET Dictionary 最后赋值规则；记录重复键 JSON Pointer、属性顺序、全部候选值哈希与最终选择。原始输入兼容处理独立于我方严格 canonical JSON 输出。错误资源单独保留拒绝原因、原始偏移/哈希；原始提取保留其他资源，而参考加载模型按源码在该文化第一个坏资源处中止该文化加载。语言预算耗尽后停止后续解码。不支持非优化 `#-`、pointer tables、raw-deflate 猜测及外部程序集资源加载。
+
+完整 canonical JSON 仍受 64 MiB 上限约束；分块预检成功前不分配完整 JSON 字符串/字节副本。语言键预算覆盖全部原始 category/property 出现次数，不能靠重复键绕过。全局 metadata 字符串缓存最多 131,072 个 heap offsets / 8 MiB UTF-8 名称；TypeDef 最多 16,384 个，展开 fullName 合计最多 8 MiB，均在插入/拼接前检查。
 
 ## 本地私有调用
 
