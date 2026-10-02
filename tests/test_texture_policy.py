@@ -16,8 +16,8 @@ class TextureSchedulingPolicyTests(unittest.TestCase):
                 (root/name).write_bytes(body);rows.append({'path':name,'bytes':len(body)})
             return plan_texture_batches(root,rows,TextureBatchPolicy(**options))
     def test_opt_in_window_preserves_order_and_default(self):
-        self.assertEqual(256,TextureBatchPolicy().files_per_child)
-        old=self.plan(1025);new=self.plan(1025,files_per_child=1024)
+        self.assertEqual(1024,TextureBatchPolicy().files_per_child)
+        old=self.plan(1025,files_per_child=256);new=self.plan(1025)
         self.assertEqual([256,256,256,256,1],[len(x) for x in old.batches])
         self.assertEqual([1024,1],[len(x) for x in new.batches])
         self.assertEqual([r for b in old.batches for r in b],[r for b in new.batches for r in b])

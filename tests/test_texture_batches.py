@@ -105,10 +105,13 @@ class TextureBatchTests(unittest.TestCase):
         self.sources(15_123, expanded=145_367)
         plan = plan_texture_batches(self.source, tree_inventory(self.source))
         self.assertEqual(sum(map(len, plan.batches)), 15_123)
-        self.assertEqual(len(plan.batches), 60)
+        self.assertEqual([len(batch) for batch in plan.batches], [880] * 17 + [163])
+        old_plan = plan_texture_batches(self.source, tree_inventory(self.source), TextureBatchPolicy(files_per_child=256))
+        self.assertEqual(len(old_plan.batches), 60)
         self.assertGreater(plan.pixel_risk, TextureBatchPolicy().total_pixels)
         self.assertLess(plan.declared_expanded_bytes, TextureBatchPolicy().expanded_bytes)
-        self.assertTrue(all(len(batch) <= 256 for batch in plan.batches))
+        self.assertTrue(all(len(batch) <= 1024 and len(batch) * (2 * 145_367) <= 256_000_000
+                            for batch in plan.batches))
 
     def test_header_risk_splits_even_below_file_threshold(self):
         self.sources(17, expanded=32_000_000)

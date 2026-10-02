@@ -14,9 +14,9 @@ from .security import PipelineError
 
 @dataclass(frozen=True)
 class TextureBatchPolicy:
-    # Scheduling window; the default is retained until real comparison passes.
-    # Decoder pixel, memory, time, disk and path/report hard limits are separate.
-    files_per_child: int = 256
+    # Scheduling window verified against the former 256-file policy; all
+    # decoder pixel, memory, time, disk and path/report hard limits are unchanged.
+    files_per_child: int = 1024
     child_pixels: int = 256_000_000
     image_pixels: int = 16_000_000
     max_children: int = 256
