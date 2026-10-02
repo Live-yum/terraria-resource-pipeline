@@ -258,13 +258,31 @@ def _limits_launcher(plan: CommandPlan, limits: AdapterLimits) -> list[str]:
     return [sys.executable, "-I", "-S", "-c", code, *plan.argv]
 
 
+@dataclass(frozen=True)
+class WorkingUsage:
+    """Actual retained bytes/paths, including directories but excluding roots."""
+    bytes: int = 0
+    paths: int = 0
+
+    def __post_init__(self):
+        if any(type(value) is not int or value < 0 for value in (self.bytes, self.paths)):
+            raise ValueError("Working usage must contain nonnegative integer counts")
+
+
 def _working_size(job: Path, limits: AdapterLimits, *,
-                  checkpoint: Callable[[], None] | None = None) -> None:
-    # Cheap watchdog: hash and parse validation happens after the process exits.
+                  checkpoint: Callable[[], None] | None = None,
+                  reserved_output: WorkingUsage | None = None) -> WorkingUsage:
+    # The default scans everything. A caller may reserve verified parent output
+    # ONLY when that directory is outside every live child's sandbox mounts.
+    # All mutable work, including child snapshots and outputs, is still scanned.
     if checkpoint is not None:
         checkpoint()
-    count = total = 0
-    for root in (job / "output", job / "work"):
+    count = reserved_output.paths if reserved_output is not None else 0
+    total = reserved_output.bytes if reserved_output is not None else 0
+    if count > limits.files or total > limits.total_bytes:
+        raise PipelineError("Adapter exceeded output capacity")
+    roots = (job / "work",) if reserved_output is not None else (job / "output", job / "work")
+    for root in roots:
         for directory, directories, files in os.walk(root, followlinks=False):
             if checkpoint is not None:
                 checkpoint()
@@ -284,6 +302,7 @@ def _working_size(job: Path, limits: AdapterLimits, *,
                     raise PipelineError("Adapter exceeded output capacity")
     if checkpoint is not None:
         checkpoint()
+    return WorkingUsage(bytes=total, paths=count)
 
 
 def validate_normalized_package(root: Path, binding: InputBinding, profile: CoverageProfile) -> dict:
@@ -415,7 +434,8 @@ class TrustedAdapterRunner:
     @staticmethod
     def _execute(plan: CommandPlan, limits: AdapterLimits, job: Path, *,
                  cancel_check: Callable[[], bool] | None = None,
-                 watchdog_job: Path | None = None) -> None:
+                 watchdog_job: Path | None = None,
+                 reserved_output: WorkingUsage | None = None) -> None:
         if os.name != "posix":
             raise PipelineError("This external adapter runner requires a configured POSIX sandbox")
         process: subprocess.Popen | None = None
@@ -434,12 +454,12 @@ class TrustedAdapterRunner:
                                        start_new_session=True, close_fds=True)
             while process.poll() is None:
                 check_cancel()
-                _working_size(watched, limits, checkpoint=check_cancel)
+                _working_size(watched, limits, checkpoint=check_cancel, reserved_output=reserved_output)
                 if time.monotonic() >= deadline:
                     raise PipelineError("Trusted adapter timed out; no output was approved")
                 time.sleep(0.025)
             check_cancel()
-            _working_size(watched, limits, checkpoint=check_cancel)
+            _working_size(watched, limits, checkpoint=check_cancel, reserved_output=reserved_output)
             if process.returncode != 0:
                 raise PipelineError(f"Trusted adapter or OS sandbox failed; no output was approved (exit={process.returncode})")
         finally:

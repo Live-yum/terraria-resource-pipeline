@@ -374,3 +374,178 @@ class TextureBatchTests(unittest.TestCase):
             self.extractor.extract(self.source, self.job, deadline=30)
         self.assertEqual(destinations, ['inputs/package'])
         self.assertFalse(self.job.exists())
+
+    def test_ledger_reserves_actual_png_bytes_and_shared_paths(self):
+        self.sources(5)
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=self.decode):
+            self.extractor.extract(self.source, self.job)
+        reservations = [kwargs['reserved_output'] for _, _, kwargs in self.calls]
+        self.assertEqual([entry.bytes for entry in reservations], [0, 2 * len(self.png), 4 * len(self.png)])
+        self.assertEqual([entry.paths for entry in reservations], [0, 4, 6])
+        self.assertEqual(len({job for job, _, _ in self.calls}), 3)
+        self.assertEqual([job.name for job, _, _ in self.calls], ['child-0000', 'child-0001', 'child-0002'])
+
+    def test_small_job_does_not_reserve_mounted_output(self):
+        self.sources(1)
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=self.decode):
+            self.extractor.extract(self.source, self.job)
+        self.assertIsNone(self.calls[0][2]['reserved_output'])
+
+    def test_reserved_watchdog_skips_parent_output_but_charges_byte_and_path_caps(self):
+        from resource_pipeline.adapters import WorkingUsage, _working_size
+        root = self.root / 'watched'
+        (root / 'output').mkdir(parents=True)
+        (root / 'work').mkdir()
+        (root / 'output/verified.png').write_bytes(b'x' * 20)
+        (root / 'work/live').write_bytes(b'y' * 10)
+        reservation = WorkingUsage(bytes=20, paths=1)
+        import os
+        original_walk = os.walk
+        def walk(path, *args, **kwargs):
+            self.assertNotEqual(path, root / 'output')
+            return original_walk(path, *args, **kwargs)
+        with patch('resource_pipeline.adapters.os.walk', side_effect=walk):
+            usage = _working_size(root, AdapterLimits(total_bytes=30, files=2), reserved_output=reservation)
+            self.assertEqual(usage, WorkingUsage(bytes=30, paths=2))
+            for limits in (AdapterLimits(total_bytes=29), AdapterLimits(files=1)):
+                with self.subTest(limits=limits), self.assertRaisesRegex(PipelineError, 'capacity'):
+                    _working_size(root, limits, reserved_output=reservation)
+        with self.assertRaises(ValueError):
+            WorkingUsage(bytes=-1)
+        with self.assertRaises(ValueError):
+            WorkingUsage(paths=True)
+
+    def test_active_child_cannot_mount_reserved_parent_output(self):
+        self.sources(3)
+        class UnsafeSandbox:
+            def plan(inner, spec, child):
+                return CommandPlan(('never-executed', '--bind', str(self.job), '/unsafe', '--', *spec.command), child, {}, 'synthetic-only')
+        self.extractor.sandbox = UnsafeSandbox()
+        with patch.object(TrustedAdapterRunner, '_execute') as decoder, self.assertRaisesRegex(PipelineError, 'outside the child sandbox'):
+            self.extractor.extract(self.source, self.job)
+        decoder.assert_not_called()
+        self.assertFalse(self.job.exists())
+
+    def test_active_child_cannot_mount_reserved_output_descendant(self):
+        self.sources(3)
+        class UnsafeSandbox:
+            def plan(inner, spec, child):
+                return CommandPlan(('never-executed', '--bind', str(self.job / 'output/Content'), '/unsafe', '--', *spec.command), child, {}, 'synthetic-only')
+        self.extractor.sandbox = UnsafeSandbox()
+        with patch.object(TrustedAdapterRunner, '_execute') as decoder, self.assertRaisesRegex(PipelineError, 'outside the child sandbox'):
+            self.extractor.extract(self.source, self.job)
+        decoder.assert_not_called()
+        self.assertFalse(self.job.exists())
+
+    def test_real_sandbox_plan_only_mounts_unique_child_not_merged_output(self):
+        from resource_pipeline.adapters import BubblewrapSandbox
+        self.sources(3)
+        self.extractor.sandbox = BubblewrapSandbox(executable=self.runtime, runtime_roots=())
+        plans = []
+        def collect(plan, limits, job, **kwargs):
+            plans.append(plan)
+            self.decode(plan, limits, job, **kwargs)
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=collect):
+            self.extractor.extract(self.source, self.job)
+        for plan, (child, _, _) in zip(plans, self.calls):
+            self.assertIn(str(child / 'output'), plan.argv)
+            self.assertNotIn(str(self.job / 'output'), plan.argv)
+            self.assertNotIn(str(self.job), plan.argv)
+
+    def test_ledger_rejects_file_directory_collisions_and_inconsistent_totals(self):
+        from resource_pipeline.textures import _TextureOutputLedger
+        ledger = _TextureOutputLedger().advance([{'path': 'a.png', 'bytes': 3, 'sha256': 'a' * 64}], lambda: None)
+        for name in ('a.png', 'A.png', 'a.png/b.png'):
+            with self.subTest(name=name), self.assertRaisesRegex(PipelineError, 'collision'):
+                ledger.advance([{'path': name, 'bytes': 2, 'sha256': 'b' * 64}], lambda: None)
+        with self.assertRaises(ValueError):
+            _TextureOutputLedger(files=ledger.files, bytes=0)
+        from dataclasses import FrozenInstanceError
+        with self.assertRaises(FrozenInstanceError):
+            ledger.bytes = 0
+
+    def test_final_full_verification_rejects_reserved_output_tamper(self):
+        self.sources(5)
+        for kind in ('bytes', 'extra-file', 'extra-directory'):
+            self.calls.clear()
+            def tamper(plan, limits, job, **kwargs):
+                self.decode(plan, limits, job, **kwargs)
+                if len(self.calls) == 2:
+                    output = self.job / 'output'
+                    if kind == 'bytes':
+                        target = next(output.rglob('*.png'))
+                        target.unlink()
+                        target.write_bytes(b'changed after verified merge')
+                    elif kind == 'extra-file':
+                        (output / 'injected.txt').write_text('synthetic tamper')
+                    else:
+                        (output / 'unexpected-empty-directory').mkdir()
+            with self.subTest(kind=kind), patch.object(TrustedAdapterRunner, '_execute', side_effect=tamper), self.assertRaisesRegex(PipelineError, 'ledger'):
+                self.extractor.extract(self.source, self.job)
+            self.assertFalse(self.job.exists())
+
+    def test_batched_byte_capacity_stops_before_third_child(self):
+        from dataclasses import replace
+        self.sources(5)
+        # Incompressible, synthetic 32x32 pixels make two accumulated batches
+        # exceed 13 kB although either child fits alone.
+        import random
+        buf = BytesIO()
+        Image.frombytes('RGBA', (32, 32), random.Random(1).randbytes(4096)).save(buf, format='PNG')
+        self.png = buf.getvalue()
+        def decode_large(plan, limits, job, **kwargs):
+            self.decode(plan, limits, job, **kwargs)
+            import json
+            path = job / 'output/texture-report.json'
+            report = json.loads(path.read_text())
+            for row in report['images']:
+                row.update(width=32, height=32)
+            path.write_bytes(canonical_json(report))
+        def limits(**kwargs):
+            return replace(AdapterLimits(**kwargs), total_bytes=13_000)
+        with patch('resource_pipeline.textures.AdapterLimits', side_effect=limits), \
+             patch.object(TrustedAdapterRunner, '_execute', side_effect=decode_large), \
+             self.assertRaisesRegex(PipelineError, 'capacity'):
+            self.extractor.extract(self.source, self.job)
+        self.assertEqual(len(self.calls), 2)
+        self.assertFalse(self.job.exists())
+
+    def test_forged_receipt_size_is_rejected_before_ledger_merge(self):
+        self.sources(3)
+        import json
+        def forged(plan, limits, job, **kwargs):
+            self.decode(plan, limits, job, **kwargs)
+            path = job / 'output/texture-report.json'
+            report = json.loads(path.read_text())
+            report['images'][0]['bytes'] = 0
+            path.write_bytes(canonical_json(report))
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=forged), self.assertRaisesRegex(PipelineError, 'receipt mismatch'):
+            self.extractor.extract(self.source, self.job)
+        self.assertEqual(len(self.calls), 1)
+        self.assertFalse(self.job.exists())
+
+    def test_batched_path_capacity_stops_before_fourth_child(self):
+        from dataclasses import replace
+        self.sources(5)
+        self.extractor.policy = TextureBatchPolicy(files_per_child=1)
+        def limits(**kwargs):
+            return replace(AdapterLimits(**kwargs), files=32)
+        with patch('resource_pipeline.textures.AdapterLimits', side_effect=limits), \
+             patch.object(TrustedAdapterRunner, '_execute', side_effect=self.decode), \
+             self.assertRaisesRegex(PipelineError, 'capacity'):
+            self.extractor.extract(self.source, self.job)
+        self.assertEqual(len(self.calls), 3)
+        self.assertFalse(self.job.exists())
+
+    def test_merge_reserves_transient_new_parent_directories(self):
+        from dataclasses import replace
+        self.sources(5)
+        self.extractor.policy = TextureBatchPolicy(files_per_child=1)
+        def limits(**kwargs):
+            return replace(AdapterLimits(**kwargs), files=29)
+        with patch('resource_pipeline.textures.AdapterLimits', side_effect=limits), \
+             patch.object(TrustedAdapterRunner, '_execute', side_effect=self.decode), \
+             self.assertRaisesRegex(PipelineError, 'merge exceeds whole-job path capacity'):
+            self.extractor.extract(self.source, self.job)
+        self.assertEqual(len(self.calls), 1)
+        self.assertFalse(self.job.exists())

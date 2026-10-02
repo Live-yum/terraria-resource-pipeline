@@ -13,11 +13,11 @@ import time
 from threading import Lock
 
 from .adapters import (AdapterLimits, BubblewrapSandbox, CommandPlan, TrustedAdapterRunner,
-                       _copy_tree, _working_size, file_digest, tree_digest, tree_inventory)
+                       _copy_tree, _working_size, file_digest, tree_digest, tree_inventory, WorkingUsage)
 from .contracts import package_file
 from .decoded_images import inspect_png
 from .texture_batches import TextureBatchPolicy, plan_texture_batches
-from .security import PipelineError, atomic_write, canonical_json, read_json, sha256
+from .security import PipelineError, atomic_write, canonical_json, read_json, relative_path, sha256
 
 
 def texture_surface_formats(rows: list[dict]) -> dict[str, int]:
@@ -42,6 +42,64 @@ class TextureTool:
     root: Path
     sha256: str
     dotnet: Path
+
+
+@dataclass(frozen=True)
+class _TextureOutputLedger:
+    """A frozen reservation for verified files outside the live child sandbox.
+
+    Entry bytes/hashes come from the parent's filesystem inventory, not receipt
+    claims. Only successfully validated PNGs are merged. Parent-created paths
+    are accounted exactly, including directory sharing and file/dir conflicts.
+    """
+    files: frozenset[tuple[str, int, str]] = frozenset()
+    directories: frozenset[str] = frozenset()
+    bytes: int = 0
+
+    def __post_init__(self):
+        if (type(self.files) is not frozenset or type(self.directories) is not frozenset
+                or type(self.bytes) is not int or self.bytes < 0
+                or self.bytes != sum(size for _, size, _ in self.files)):
+            raise ValueError('Texture ledger must equal its frozen actual-file inventory')
+
+    @property
+    def usage(self) -> WorkingUsage:
+        return WorkingUsage(bytes=self.bytes, paths=len(self.files) + len(self.directories))
+
+    def advance(self, artifacts: list[dict], check) -> '_TextureOutputLedger':
+        files = set(self.files)
+        directories = set(self.directories)
+        file_names = {name.casefold(): name for name, _, _ in files}
+        directory_names = {name.casefold(): name for name in directories}
+        total = self.bytes
+        for item in artifacts:
+            check()
+            name = relative_path(item['path'])
+            size, digest = item['bytes'], item['sha256']
+            if (not name.lower().endswith('.png') or type(size) is not int or size < 0
+                    or not isinstance(digest, str) or re.fullmatch('[a-f0-9]{64}', digest) is None):
+                raise PipelineError('Invalid verified texture output inventory')
+            if name.casefold() in file_names or name.casefold() in directory_names:
+                raise PipelineError('Texture output ledger path collision')
+            for parent in Path(name).parents:
+                if parent == Path('.'):
+                    continue
+                directory = parent.as_posix()
+                key = directory.casefold()
+                if key in file_names or (key in directory_names and directory_names[key] != directory):
+                    raise PipelineError('Texture output ledger path collision')
+                directories.add(directory)
+                directory_names[key] = directory
+            files.add((name, size, digest))
+            file_names[name.casefold()] = name
+            total += size
+        return _TextureOutputLedger(frozenset(files), frozenset(directories), total)
+
+    def verify(self, actual: list[dict]) -> None:
+        pngs = frozenset((row['path'], row['bytes'], row['sha256']) for row in actual
+                         if row['path'] != 'texture-report.json')
+        if pngs != self.files:
+            raise PipelineError('Merged texture output differs from verified ledger')
 
 
 # One active decoder job per worker process, including separately constructed
@@ -128,23 +186,21 @@ class TextureExtractor:
                 raise PipelineError('Texture snapshots exceed whole-job capacity')
             all_rows, all_skipped, total_pixels = [], [], 0
             isolation = None
-            for batch in batches.batches:
+            batched = len(batches.batches) > 1
+            ledger = _TextureOutputLedger()
+            for batch_index, batch in enumerate(batches.batches):
                 check()
-                if len(batches.batches) == 1:
+                if not batched:
                     child = job
                 else:
-                    # Reserve complete bounded copies before writing them. The
-                    # watchdog additionally counts their actual retained bytes.
-                    retained = 0
-                    for root in (job / 'output', job / 'work'):
-                        for path in root.rglob('*'):
-                            check()
-                            if path.is_file():
-                                retained += path.stat().st_size
+                    # The ledger charges already-validated PNGs exactly once.
+                    # Parent output is NOT mounted by this unique child; scan all
+                    # parent work (including the child) against the same budget.
+                    usage = _working_size(job, working, checkpoint=check, reserved_output=ledger.usage)
                     copies = sum(row['bytes'] for row in batch) + sum(row['bytes'] for row in tool_inventory) + request_bytes
-                    if retained + copies > working.total_bytes:
+                    if usage.bytes + copies > working.total_bytes:
                         raise PipelineError('Texture batch snapshots exceed whole-job capacity')
-                    child = job / 'work/active-child'
+                    child = job / 'work' / f'child-{batch_index:04d}'
                     for folder in ('inputs/package', 'output', 'work/home', 'work/tmp'):
                         (child / folder).mkdir(parents=True)
                     self._copy_batch(job / 'inputs/package', child / 'inputs/package', batch, check)
@@ -152,9 +208,11 @@ class TextureExtractor:
                     _copy_tree(job / 'tool', child / 'tool', limits, checkpoint=check)
                     check()
                     atomic_write(child / 'inputs/request.json', canonical_json({'input': '/inputs/package'}))
-                _working_size(job, working, checkpoint=check)
-                report, child_isolation = self._run_child(child, job, working, cancel_check, deadline, check)
-                rows, skipped, pixels = self._validate_report(child / 'output', batch, limits, check)
+                reservation = ledger.usage if batched else None
+                _working_size(job, working, checkpoint=check, reserved_output=reservation)
+                report, child_isolation = self._run_child(child, job, working, cancel_check, deadline, check,
+                                                          reserved_output=reservation)
+                rows, skipped, pixels, png_inventory = self._validate_report(child / 'output', batch, limits, check)
                 total_pixels += pixels
                 if total_pixels > self.policy.total_pixels:
                     raise PipelineError('Texture job total decoded-pixel budget exceeded')
@@ -162,6 +220,12 @@ class TextureExtractor:
                     raise PipelineError('Texture child isolation changed')
                 isolation = child_isolation
                 if child != job:
+                    next_ledger = ledger.advance(png_inventory, check)
+                    usage = _working_size(job, working, checkpoint=check, reserved_output=ledger.usage)
+                    # Renames add no file bytes or file entries. New parent
+                    # directories temporarily coexist with child directories.
+                    if usage.paths + len(next_ledger.directories - ledger.directories) > working.files:
+                        raise PipelineError('Texture merge exceeds whole-job path capacity')
                     for row in rows:
                         check()
                         target = job / 'output' / row['output']
@@ -169,10 +233,12 @@ class TextureExtractor:
                         if target.exists():
                             raise PipelineError('Duplicate merged texture output')
                         os.replace(package_file(child / 'output', row['output']), target)
+                        target.chmod(0o400)
                     shutil.rmtree(child)
+                    ledger = next_ledger
                 all_rows.extend(rows)
                 all_skipped.extend(skipped)
-                _working_size(job, working, checkpoint=check)
+                _working_size(job, working, checkpoint=check, reserved_output=ledger.usage if batched else None)
             check()
             # No partial receipt is reusable or publishable. Only the verified
             # complete union is written at the established output-root contract.
@@ -184,9 +250,27 @@ class TextureExtractor:
                 'maxDeclaredExpandedBytes': self.policy.expanded_bytes,
                 'workingByteLimit': limits.total_bytes, 'maxConcurrentChildren': 1,
                 'jobTimeoutSeconds': 120, 'partialReuse': False}
-            atomic_write(job / 'output/texture-report.json', canonical_json(report))
+            report_bytes = canonical_json(report)
+            usage = _working_size(job, working, checkpoint=check, reserved_output=ledger.usage if batched else None)
+            # atomic_write temporarily retains the new report alongside an old
+            # single-child report, if any; charge that temporary file too.
+            if (len(report_bytes) > limits.file_bytes or usage.bytes + len(report_bytes) > working.total_bytes
+                    or usage.paths + 1 > working.files):
+                raise PipelineError('Texture report exceeds whole-job capacity')
+            atomic_write(job / 'output/texture-report.json', report_bytes)
+            # Final full scans are mandatory: the optimization only removes
+            # repeated traversal while a sandboxed child is running.
             _working_size(job, working, checkpoint=check)
             actual = tree_inventory(job / 'output', limits, checkpoint=check)
+            if batched:
+                ledger.verify(actual)
+                actual_directories = set()
+                for path in (job / 'output').rglob('*'):
+                    check()
+                    if path.is_dir():
+                        actual_directories.add(path.relative_to(job / 'output').as_posix())
+                if actual_directories != ledger.directories:
+                    raise PipelineError('Merged texture directories differ from verified ledger')
             if {r['path'] for r in actual} != {*(row['output'] for row in all_rows), 'texture-report.json'}:
                 raise PipelineError('Unexpected merged texture output artifact')
             output_hashes = {row['path']: row['sha256'] for row in actual}
@@ -246,10 +330,19 @@ class TextureExtractor:
                 raise PipelineError('Texture batch snapshot mismatch')
             target.chmod(0o400)
 
-    def _run_child(self, child, job, limits, cancel_check, deadline, check):
+    def _run_child(self, child, job, limits, cancel_check, deadline, check, *, reserved_output=None):
         check()
+        if reserved_output is not None and child == job:
+            raise PipelineError('Cannot reserve output exposed to the live child')
         spec = SimpleNamespace(command=(str(self.tool.dotnet), '/tool/TextureExtractor.dll'))
         plan = self.sandbox.plan(spec, child)
+        if reserved_output is not None:
+            output = (job / 'output').resolve()
+            for index, argument in enumerate(plan.argv[:-1]):
+                if argument in ('--bind', '--ro-bind', '--bind-try', '--ro-bind-try'):
+                    mounted = Path(plan.argv[index + 1]).resolve()
+                    if mounted == output or mounted in output.parents or output in mounted.parents:
+                        raise PipelineError('Reserved parent output must stay outside the child sandbox')
         # Bound .NET GC reservation too, so RLIMIT_AS remains meaningful.
         argv = list(plan.argv)
         end = argv.index('--')
@@ -260,7 +353,8 @@ class TextureExtractor:
         plan = CommandPlan(tuple(argv), plan.cwd, plan.env, plan.isolation)
         remaining = replace(limits, timeout_seconds=max(0.001, deadline - time.monotonic()))
         try:
-            TrustedAdapterRunner._execute(plan, remaining, child, cancel_check=cancel_check, watchdog_job=job)
+            TrustedAdapterRunner._execute(plan, remaining, child, cancel_check=cancel_check, watchdog_job=job,
+                                          reserved_output=reserved_output)
         except PipelineError as failure:
             check()
             diagnostic = child / 'output/texture-error.json'
@@ -281,6 +375,7 @@ class TextureExtractor:
 
     def _validate_report(self, output, xnb, limits, check):
         actual = tree_inventory(output, limits, checkpoint=check)
+        actual_by_path = {entry['path']: entry for entry in actual}
         check()
         report = read_json(package_file(output, 'texture-report.json'))
         check()
@@ -317,9 +412,13 @@ class TextureExtractor:
                 raise PipelineError('Texture source receipt mismatch')
             decoded = inspect_png(self._read_checked(package_file(output, name), limits.file_bytes, check))
             check()
+            if (name not in actual_by_path or actual_by_path[name]['sha256'] != decoded['sha256']
+                    or actual_by_path[name]['bytes'] != decoded['bytes']):
+                raise PipelineError('Texture output changed during receipt verification')
             if (any(row.get(k) != decoded[k] for k in ('sha256', 'width', 'height'))
                     or any(type(row.get(k)) is not int for k in ('width', 'height'))
-                    or ('rgbaSha256' in row and row['rgbaSha256'] != decoded['rgbaSha256'])):
+                    or ('rgbaSha256' in row and row['rgbaSha256'] != decoded['rgbaSha256'])
+                    or ('bytes' in row and (type(row['bytes']) is not int or row['bytes'] != decoded['bytes']))):
                 raise PipelineError('Texture pixel/output receipt mismatch')
             if 'mipLevels' in row or 'exportedMip' in row:
                 if (type(row.get('mipLevels')) is not int or type(row.get('exportedMip')) is not int
@@ -334,7 +433,7 @@ class TextureExtractor:
             check()
         if {r['path'] for r in actual} != {*produced, 'texture-report.json'}:
             raise PipelineError('Unexpected texture output artifact')
-        return rows, skipped, pixels
+        return rows, skipped, pixels, [actual_by_path[row['output']] for row in rows]
 
 
 def configured_texture_extractor():
