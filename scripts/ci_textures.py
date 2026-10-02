@@ -92,10 +92,20 @@ def main():
                 app=create_app(root/'service',synchronous=True)
             pipeline=app.state.pipeline
             preflight=app.state.raw_preflight
-            with TestClient(app) as client:
-                response=client.post('/api/raw-jobs',files={'server_file':('combined-game.zip',fixture_zip(),'application/zip')})
-                assert response.status_code==202,response.text
-                result=response.json()
+            # Synthetic-only bounded diagnostics; production never exposes subprocess logs.
+            original_popen=subprocess.Popen
+            with tempfile.TemporaryFile() as diagnostics:
+                def capture(*positional, **keywords):
+                    keywords['stderr']=diagnostics
+                    return original_popen(*positional, **keywords)
+                with patch('resource_pipeline.adapters.subprocess.Popen',side_effect=capture):
+                    with TestClient(app) as client:
+                        response=client.post('/api/raw-jobs',files={'server_file':('combined-game.zip',fixture_zip(),'application/zip')})
+                        assert response.status_code==202,response.text
+                        result=response.json()
+                if result.get('textures',{}).get('server',{}).get('status')!='TEXTURES_DECODED':
+                    diagnostics.seek(0)
+                    print('Synthetic sandbox stderr:',diagnostics.read(8192).decode('utf-8','replace'))
             job=result
             receipt=result['textures']['server']
             assert receipt['status']=='TEXTURES_DECODED',receipt
