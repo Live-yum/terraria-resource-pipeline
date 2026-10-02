@@ -60,11 +60,18 @@ def compressed_huffman_xnb(*, bad_tree=False, overrun=False):
     return b'XNBw\5\x80'+struct.pack('<II',14+len(framed),len(body))+framed
 
 
+def with_lzx_trailer(raw, trailer=b'\0'*5):
+    data=bytearray(raw+trailer)
+    struct.pack_into('<I',data,6,len(data))
+    return bytes(data)
+
+
 def fixture_zip():
     stream=BytesIO()
     with zipfile.ZipFile(stream,'w') as z:
         z.writestr('TerrariaServer.exe',b'original synthetic inert bytes')
         z.writestr('Content/Images/Huffman.xnb',compressed_huffman_xnb())
+        z.writestr('Content/Images/Terminated.xnb',with_lzx_trailer(compressed_huffman_xnb()))
         for fmt in (0,4,5,6):
             for compressed in (False,True):
                 z.writestr(f'Content/Images/Test_{fmt}_{int(compressed)}.xnb',xnb(fmt,compressed))
@@ -81,6 +88,7 @@ def check_pixels(output):
 def check_surface_formats(receipt):
     expected = {f'Test_{fmt}_{int(compressed)}.xnb': fmt for fmt in (0,4,5,6) for compressed in (False,True)}
     expected['Huffman.xnb'] = 0
+    expected['Terminated.xnb'] = 0
     assert len(receipt['images']) == len(expected)
     for row in receipt['images']:
         assert row['surfaceFormat'] == expected[Path(row['input']).name]
@@ -117,15 +125,15 @@ def main():
             job=result
             receipt=result['textures']['server']
             assert receipt['status']=='TEXTURES_DECODED',receipt
-            assert receipt['imageCount']==9
+            assert receipt['imageCount']==10
             check_surface_formats(receipt)
-            assert receipt['surfaceFormatCounts']=={'0':3,'4':2,'5':2,'6':2}
+            assert receipt['surfaceFormatCounts']=={'0':4,'4':2,'5':2,'6':2}
             assert receipt['isolation']=='bubblewrap-unshare-all'
             assert result['state']=='BLOCKED' and not result['extractionComplete']
             assert pipeline.current() is None
             check_pixels(pipeline.root/'jobs'/job['id']/'server-texture-job/output')
             e8=bytearray(xnb(compressed=True));e8[20]|=128
-            for payload in (bytes(e8),compressed_huffman_xnb(bad_tree=True),compressed_huffman_xnb(overrun=True)):
+            for payload in (bytes(e8),compressed_huffman_xnb(bad_tree=True),compressed_huffman_xnb(overrun=True),with_lzx_trailer(xnb(compressed=True),b'\0'*4+b'X'),with_lzx_trailer(xnb(compressed=True),b'\0'*6)):
                 stream=BytesIO()
                 with zipfile.ZipFile(stream,'w') as package:package.writestr('Content/Images/Bad.xnb',payload)
                 failed=preflight.submit((BytesIO(stream.getvalue()),'malformed.zip'))
@@ -146,15 +154,15 @@ def main():
             command=[str(args.dotnet),str(args.tool/'TextureExtractor.dll'),'--request',str(request),'--output',str(root/'output')]
             subprocess.run(command,check=True,timeout=30)
             check_pixels(root/'output')
-            receipt=json.loads((root/'output/texture-report.json').read_text());assert receipt['imageCount']==9
+            receipt=json.loads((root/'output/texture-report.json').read_text());assert receipt['imageCount']==10
             check_surface_formats(receipt)
             e8=bytearray(xnb(compressed=True));e8[20]|=128
-            badcases=[('huffman-invalid-tree',compressed_huffman_xnb(bad_tree=True)),('match-overrun',compressed_huffman_xnb(overrun=True)),('e8-unsupported',bytes(e8))]
+            badcases=[('nonzero-terminator',with_lzx_trailer(xnb(compressed=True),b'\0'*4+b'X')),('extra-trailing-byte',with_lzx_trailer(xnb(compressed=True),b'\0'*6)),('huffman-invalid-tree',compressed_huffman_xnb(bad_tree=True)),('match-overrun',compressed_huffman_xnb(overrun=True)),('e8-unsupported',bytes(e8))]
             for name,data in badcases+[('truncated',b'XNB'),('huge',xnb(w=4000000,h=1)[:100]),('invalidflags',xnb()[:5]+b'\x40'+xnb()[6:])]:
                 for path in inp.iterdir():path.unlink()
                 (inp/'bad.xnb').write_bytes(data)
                 command[-1]=str(root/name)
                 assert subprocess.run(command,timeout=10).returncode!=0,name
-        print(json.dumps({'passed':True,'cases':9,'isolation':args.sandbox,'source':'original-synthetic-XNB','lzxFixture':'stored-and-verbatim-Huffman-with-LZ-matches','gameAssetsVerified':False}))
+        print(json.dumps({'passed':True,'cases':10,'isolation':args.sandbox,'source':'original-synthetic-XNB','lzxFixture':'stored-and-verbatim-Huffman-with-LZ-matches','gameAssetsVerified':False}))
 
 if __name__=='__main__':main()

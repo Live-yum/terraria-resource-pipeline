@@ -29,6 +29,7 @@ Python 打包入口：`scripts/build_consumer_release.py`。输入为已审查�
 
 - `items`：`items.catalog`（基础）、`items.rules`、`items.categories`，均 JSON
 - `player`：`player.presentation`（JSON 基础）、`player.walk`、`player.atlas`（binary）
+- `markers`：`markers.catalog`（JSON 基础）、`markers.images`（binary），在语义负载中绑定精确共享材料依赖
 - `worldgen`：`worldgen.choices`（JSON），在语义负载中绑定精确共享材料/物品依赖，没有本组的 baseSha256
 
 新组使用重复的 `--object ROLE=PATH` 参数提供私有原始文件。材料原有四个命名参数仍兼容。每组只能包含规定的完整角色集合，不能混入另一组、漏角色或让上传包自定义校验规则；保持 32/64 MiB 限额。组校验由调用方显式选择，材料默认协议和黄金向量不变。

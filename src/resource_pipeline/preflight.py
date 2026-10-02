@@ -1,8 +1,8 @@
-"""Private, data-only intake of paired raw sources, never game extraction.
+"""Private, data-only intake of paired raw sources and staged real evidence.
 
 ZIP names, uploaded manifests and user-entered version strings are hints only.
 Version verification requires operator-owned pins for the actual archive bytes.
-No path from this service invokes a producer, imports an assembly or publishes.
+Only installed data parsers run; no assembly is executed and partial evidence never publishes.
 """
 from __future__ import annotations
 
@@ -38,9 +38,10 @@ class TrustedSource:
 class RawInputPreflight:
     """Shares durable job records with Pipeline; all raw jobs stay unpublishable."""
     def __init__(self, pipeline, limits: ArchiveLimits = ArchiveLimits(),
-                 trusted_sources: tuple[TrustedSource, ...] = (), texture_extractor=None):
+                 trusted_sources: tuple[TrustedSource, ...] = (), texture_extractor=None, semantic_producer=None):
         self.pipeline = pipeline
         self.texture_extractor = texture_extractor
+        self.semantic_producer = semantic_producer
         self.limits = limits
         self.trusted_sources = {}
         for source in trusted_sources:
@@ -191,9 +192,16 @@ class RawInputPreflight:
                         if source.get("versionEvidence", {}).get("status") == "verified"}
             if len(versions) > 1:
                 blockers.append(self._block("SOURCE_VERSION_MISMATCH", "服务端与客户端的可信版本不一致"))
-            # A separate adapter runner exists, but no real producer is installed
-            # or connected to this intake endpoint. Never fall back to synthetic.
-            blockers.append(self._block("NO_TRUSTED_ADAPTER", "此预检服务尚未安装并接入真实版本可信适配器；完整游戏语义未提取，不能审核或发布"))
+            if self.semantic_producer is None:
+                blockers.append(self._block("NO_TRUSTED_ADAPTER", "未安装真实语义生产器，不能审核或发布"))
+            else:
+                roots = {role: directory / f"{role}-files" for role, source in job["sources"].items()
+                         if source.get("inventoryStatus") == "verified"}
+                try:
+                    job["producerEvidence"] = self.semantic_producer.produce(roots, job["textures"], directory / "adapter-evidence")
+                    blockers.append(self._block("SEMANTIC_COVERAGE_INCOMPLETE", "静态程序集与原始纹理证据已生成；完整属性、动态说明、帧及像素规则尚未核实，不能审核发布"))
+                except PipelineError:
+                    blockers.append(self._block("SEMANTIC_PRODUCER_REJECTED", "真实语义生产器拒绝输入，未生成可审核候选"))
             job.update(state="BLOCKED", blockers=blockers, extractedBytes=expanded,
                        archiveEntries=entries, executedInput=False, extractionComplete=False,
                        error="；".join(blocker["message"] for blocker in blockers))

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 import os
+import re
 
 from .adapters import (AdapterLimits, BubblewrapSandbox, CommandPlan, TrustedAdapterRunner,
                        _copy_tree, tree_digest, tree_inventory)
@@ -77,7 +78,21 @@ class TextureExtractor:
                          '--setenv', 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT', '1',
                          '--setenv', 'DOTNET_CLI_TELEMETRY_OPTOUT', '1']
         plan = CommandPlan(tuple(argv), plan.cwd, plan.env, plan.isolation)
-        TrustedAdapterRunner._execute(plan, limits, job)
+        try:
+            TrustedAdapterRunner._execute(plan, limits, job)
+        except PipelineError as failure:
+            diagnostic = job / 'output/texture-error.json'
+            if diagnostic.is_file() and not diagnostic.is_symlink():
+                report = read_json(diagnostic, 4096)
+                stages = {'INPUT', 'HEADER', 'LZX_FRAMING', 'LZX_DECODE', 'TEXTURE_PAYLOAD'}
+                errors = {'InvalidDataException', 'EndOfStreamException', 'OverflowException',
+                          'ArgumentException', 'IndexOutOfRangeException', 'OutOfMemoryException'}
+                if report.get('stage') in stages and report.get('error') in errors:
+                    code = re.search(r"\(exit=(-?[0-9]+)\)", str(failure))
+                    suffix = f"(exit={code[1]})" if code else ""
+                    raise PipelineError(f"TEXTURE_REJECTED:{report['stage']}:{report['error']}" + suffix) from failure
+            raise
+
         actual = tree_inventory(job / 'output', limits)
         report = read_json(package_file(job / 'output', 'texture-report.json'))
         rows = report.get('images', [])

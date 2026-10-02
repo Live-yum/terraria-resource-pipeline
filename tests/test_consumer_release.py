@@ -182,6 +182,7 @@ class ConsumerReleaseTests(unittest.TestCase):
             "items": {"items.catalog": b"[[],[],[],[],[],[],[]]", "items.rules": b"{}", "items.categories": b"{}"},
             "player": {"player.presentation": b"{}", "player.walk": b"synthetic-walk", "player.atlas": b"synthetic-atlas"},
             "worldgen": {"worldgen.choices": b"{}"},
+            "markers": {"markers.catalog": b"{}", "markers.images": b"synthetic-markers"},
         }
         for group, objects in examples.items():
             with self.subTest(group=group):

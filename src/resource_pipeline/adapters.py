@@ -376,7 +376,7 @@ class TrustedAdapterRunner:
                 time.sleep(0.025)
             _working_size(job, limits)
             if process.returncode != 0:
-                raise PipelineError("Trusted adapter or OS sandbox failed; no output was approved")
+                raise PipelineError(f"Trusted adapter or OS sandbox failed; no output was approved (exit={process.returncode})")
         finally:
             if process is not None:
                 # Kill the process group even when its leader exited successfully:

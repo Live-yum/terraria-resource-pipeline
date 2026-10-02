@@ -21,6 +21,7 @@ GROUPS = {
     "items": (dict.fromkeys(("items.catalog", "items.rules", "items.categories"), "json"), "items.catalog"),
     "player": ({"player.presentation": "json", "player.walk": "binary", "player.atlas": "binary"}, "player.presentation"),
     "worldgen": ({"worldgen.choices": "json"}, None),
+    "markers": ({"markers.catalog": "json", "markers.images": "binary"}, "markers.catalog"),
 }
 
 
