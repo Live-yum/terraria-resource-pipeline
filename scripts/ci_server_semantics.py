@@ -15,7 +15,8 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from resource_pipeline.server_semantics import extract_server_semantics
+from resource_pipeline.server_semantics import SemanticLimits, extract_server_semantics
+from resource_pipeline.static_il import bounded_evidence_json
 from resource_pipeline.security import PipelineError, canonical_json
 
 SOURCE_REPOSITORY = 'Live-yum/TerrariaServerHook'
@@ -27,6 +28,31 @@ SOURCE_BYTES = 26_028_032
 
 def digest_text(value: str) -> str:
     return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+
+def redact_item_stages(stage):
+    return {'status': stage['status'], 'complete': False, 'finalItemDefaults': False,
+            'selection': stage['selection'], 'analyzedInstructions': stage.get('analyzedInstructions',0),
+            'statusCounts': stage.get('statusCounts',{}), 'diagnostic': stage.get('diagnostic'),
+            'provenFieldAssignments': stage.get('provenFieldAssignments',0),
+            'prefixFieldAssignments': stage.get('prefixFieldAssignments',0),
+            'unattemptedSelectedIds': stage.get('unattemptedSelectedIds',[]),
+            'attemptedStagePairs': stage.get('attemptedStagePairs',0),
+            'unattemptedStagePairs': stage.get('unattemptedStagePairs',0),
+            'evidenceBudget':stage.get('evidenceBudget'),
+            'methodEvidence': [{'methodNameSha256': digest_text(row['methodName']),
+                                **{key:value for key,value in row.items() if key!='methodName'}} for row in stage['methods']],
+            'records': [{'id':row['id'],'entryMethodToken':row['entryMethodToken'],'status':row['status'],
+                         'diagnostic':row.get('diagnostic'),'provenFieldCount':len(row['fields']),
+                         'prefixFieldCount':len(row['prefixFields']), 'excludedFieldCount':len(row['excludedFields']),
+                         'unresolvedStaticReadTokens':row['unresolvedStaticReads'], 'analysisAssumptions':row['analysisAssumptions'],
+                         'numericSamples':[{'fieldToken':field['fieldToken'], 'fieldNameSha256':digest_text(field['fieldName']),
+                                            'fieldType':field['fieldType'], 'value':field['value'], 'evidence':field['evidence']}
+                                           for field in row['fields'][:5]],
+                         'prefixNumericSamples':[{'fieldToken':field['fieldToken'], 'fieldNameSha256':digest_text(field['fieldName']),
+                                                  'value':field['value'], 'evidence':field['evidence']}
+                                                 for field in row['prefixFields'][:3]]} for row in stage['records']],
+            'unsupported':stage['unsupported']}
 
 
 def redact(result: dict) -> dict:
@@ -90,6 +116,7 @@ def redact(result: dict) -> dict:
         'source': {'repository': SOURCE_REPOSITORY, 'commit': SOURCE_COMMIT, 'path': SOURCE_PATH,
                    'gitBlobSha1': SOURCE_BLOB, **result['input']},
         'assemblyVersion': version,
+        'itemDefaultStages': redact_item_stages(result['itemDefaultStages']),
         'localeRuleEvidence': result['localeRuleEvidence'],
         'loaderMethodEvidence': [{'methodNameSha256': digest_text(row.get('type','') + '.' + row.get('method','')),
                                   **{key: value for key,value in row.items() if key not in ('type','method')}}
@@ -151,14 +178,16 @@ def run(source_root: Path, output: Path) -> dict:
     proof['inputUnchanged'] = True
     proof['parserSha256'] = hashlib.sha256((Path(__file__).resolve().parents[1] / 'src/resource_pipeline/server_semantics.py').read_bytes()).hexdigest()
     proof['localeModelSha256'] = hashlib.sha256((Path(__file__).resolve().parents[1] / 'src/resource_pipeline/locale_semantics.py').read_bytes()).hexdigest()
+    proof['ilAnalyzerSha256'] = hashlib.sha256((Path(__file__).resolve().parents[1] / 'src/resource_pipeline/static_il.py').read_bytes()).hexdigest()
     proof['pipelineCommit'] = os.environ.get('PINNED_PIPELINE_COMMIT', '')
     if not re.fullmatch(r'[a-f0-9]{40}', proof['pipelineCommit']):
         raise PipelineError('Missing pinned pipeline checkout commit')
     if any(part.is_symlink() for part in (output, *output.parents)):
         raise PipelineError('Evidence output cannot traverse symlinks')
     output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    encoded = bounded_evidence_json(proof, SemanticLimits().output_bytes)
     with output.open('xb') as destination:
-        destination.write(canonical_json(proof))
+        destination.write(encoded)
     return proof
 
 

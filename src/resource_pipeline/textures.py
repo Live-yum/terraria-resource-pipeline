@@ -13,7 +13,7 @@ import time
 from threading import Lock
 
 from .adapters import (AdapterLimits, BubblewrapSandbox, CommandPlan, TrustedAdapterRunner,
-                       _copy_tree, _working_size, file_digest, tree_digest, tree_inventory, WorkingUsage)
+                       _copy_tree, _working_size, file_digest, tree_digest, tree_inventory, WorkingUsage, ReadOnlyTreeReservation)
 from .contracts import package_file
 from .decoded_images import inspect_png
 from .texture_batches import TextureBatchPolicy, plan_texture_batches
@@ -162,14 +162,17 @@ class TextureExtractor:
             for name in ('inputs', 'output', 'work', 'work/home', 'work/tmp'):
                 (job / name).mkdir()
             check()
-            _copy_tree(source, job / 'inputs/package', limits, checkpoint=check)
+            source_snapshot = _copy_tree(source, job / 'inputs/package', limits, checkpoint=check,
+                                         expected_inventory=inventory)
             check()
-            _copy_tree(self.tool.root, job / 'tool', limits, checkpoint=check)
+            tool_snapshot = _copy_tree(self.tool.root, job / 'tool', limits, checkpoint=check,
+                                       expected_inventory=tool_inventory)
             check()
-            if tree_inventory(job / 'inputs/package', limits, checkpoint=check) != inventory:
-                raise PipelineError('Texture source snapshot changed after planning')
-            if tree_digest(job / 'tool', limits, checkpoint=check) != self.tool.sha256:
-                raise PipelineError('Converter snapshot mismatch')
+            # _copy_tree has just independently rehashed both destination and
+            # original source. Reuse that proof instead of hashing the same
+            # destination twice before any process can access it.
+            if source_snapshot != inventory or tool_snapshot != tool_inventory:
+                raise PipelineError('Texture source/tool snapshot changed after planning')
             atomic_write(job / 'inputs/request.json', canonical_json({'input': '/inputs/package'}))
             # Read-only snapshot bytes are reserved once; all mutable directories
             # plus the sole active child are watched together, never per batch.
@@ -205,13 +208,14 @@ class TextureExtractor:
                         (child / folder).mkdir(parents=True)
                     self._copy_batch(job / 'inputs/package', child / 'inputs/package', batch, check)
                     check()
-                    _copy_tree(job / 'tool', child / 'tool', limits, checkpoint=check)
+                    _copy_tree(job / 'tool', child / 'tool', limits, checkpoint=check, expected_inventory=tool_inventory)
                     check()
                     atomic_write(child / 'inputs/request.json', canonical_json({'input': '/inputs/package'}))
                 reservation = ledger.usage if batched else None
                 _working_size(job, working, checkpoint=check, reserved_output=reservation)
                 report, child_isolation = self._run_child(child, job, working, cancel_check, deadline, check,
-                                                          reserved_output=reservation)
+                                                          reserved_output=reservation,
+                                                          readonly_expected=(batch, tool_inventory) if batched else None)
                 rows, skipped, pixels, png_inventory = self._validate_report(child / 'output', batch, limits, check)
                 total_pixels += pixels
                 if total_pixels > self.policy.total_pixels:
@@ -330,7 +334,50 @@ class TextureExtractor:
                 raise PipelineError('Texture batch snapshot mismatch')
             target.chmod(0o400)
 
-    def _run_child(self, child, job, limits, cancel_check, deadline, check, *, reserved_output=None):
+    @staticmethod
+    def _validate_readonly_plan(plan, child):
+        """Accept only exact fixed bwrap RO bindings with no bind/FD aliases."""
+        args = plan.argv[:plan.argv.index('--')]
+        arities = {'--unshare-all': 0, '--die-with-parent': 0, '--new-session': 0, '--clearenv': 0,
+                   '--cap-drop': 1, '--proc': 1, '--dev': 1, '--remount-ro': 1, '--chdir': 1,
+                   '--bind': 2, '--ro-bind': 2, '--bind-try': 2, '--ro-bind-try': 2, '--setenv': 2}
+        cursor = 1
+        while cursor < len(args):
+            arity = arities.get(args[cursor])
+            if arity is None or cursor + arity >= len(args):
+                raise PipelineError('Read-only snapshot reservation rejects unknown sandbox options')
+            cursor += arity + 1
+        for flag in ('--unshare-all', '--die-with-parent', '--new-session', '--clearenv'):
+            if flag not in args:
+                raise PipelineError('Read-only snapshot reservation requires fixed sandbox isolation')
+        if not any(args[index:index + 2] == ('--cap-drop', 'ALL') for index in range(len(args) - 1)):
+            raise PipelineError('Read-only snapshot reservation requires dropped capabilities')
+        expected = {(child / 'inputs').resolve(): '/inputs', (child / 'tool').resolve(): '/tool'}
+        found = set()
+        for index, argument in enumerate(args):
+            if argument in ('--file', '--preserve-fds', '--sync-fd') or ('bind' in argument and argument.startswith('--')
+                    and argument not in ('--bind', '--ro-bind', '--bind-try', '--ro-bind-try')):
+                raise PipelineError('Read-only snapshot reservation cannot use FD or unknown bind aliases')
+            if argument not in ('--bind', '--ro-bind', '--bind-try', '--ro-bind-try'):
+                continue
+            if index + 2 >= len(args):
+                raise PipelineError('Invalid sandbox bind plan')
+            mounted, destination = Path(args[index + 1]).resolve(), Path(args[index + 2])
+            if mounted in expected and destination.as_posix() == expected[mounted]:
+                if argument != '--ro-bind' or mounted in found:
+                    raise PipelineError('Snapshot must have exactly one read-only binding')
+                found.add(mounted)
+                continue
+            for root, target in expected.items():
+                namespace = Path(target)
+                if (mounted == root or mounted in root.parents or root in mounted.parents
+                        or destination == namespace or destination in namespace.parents or namespace in destination.parents):
+                    raise PipelineError('Read-only snapshot cannot have overlapping mount aliases')
+        if found != set(expected):
+            raise PipelineError('Read-only snapshot bindings are missing')
+
+    def _run_child(self, child, job, limits, cancel_check, deadline, check, *, reserved_output=None,
+                   readonly_expected=None):
         check()
         if reserved_output is not None and child == job:
             raise PipelineError('Cannot reserve output exposed to the live child')
@@ -343,6 +390,18 @@ class TextureExtractor:
                     mounted = Path(plan.argv[index + 1]).resolve()
                     if mounted == output or mounted in output.parents or output in mounted.parents:
                         raise PipelineError('Reserved parent output must stay outside the child sandbox')
+        readonly = ()
+        # Custom/injected sandbox implementations keep the complete scan. The
+        # pruning optimization requires the concrete fixed Bubblewrap backend.
+        if type(self.sandbox) is BubblewrapSandbox and child != job and readonly_expected is not None:
+            self._validate_readonly_plan(plan, child)
+            batch, tool_inventory = readonly_expected
+            request = canonical_json({'input': '/inputs/package'})
+            input_inventory = [{'path': 'package/' + row['path'], 'bytes': row['bytes'], 'sha256': row['sha256']}
+                               for row in batch]
+            input_inventory.append({'path': 'request.json', 'bytes': len(request), 'sha256': sha256(request)})
+            readonly = (ReadOnlyTreeReservation.capture(child / 'inputs', input_inventory, limits, check),
+                        ReadOnlyTreeReservation.capture(child / 'tool', tool_inventory, limits, check))
         # Bound .NET GC reservation too, so RLIMIT_AS remains meaningful.
         argv = list(plan.argv)
         end = argv.index('--')
@@ -354,7 +413,7 @@ class TextureExtractor:
         remaining = replace(limits, timeout_seconds=max(0.001, deadline - time.monotonic()))
         try:
             TrustedAdapterRunner._execute(plan, remaining, child, cancel_check=cancel_check, watchdog_job=job,
-                                          reserved_output=reserved_output)
+                                          reserved_output=reserved_output, reserved_readonly=readonly)
         except PipelineError as failure:
             check()
             diagnostic = child / 'output/texture-error.json'
@@ -369,12 +428,18 @@ class TextureExtractor:
                     raise PipelineError(f"TEXTURE_REJECTED:{report['stage']}:{report['error']}" + suffix) from failure
             raise
         check()
+        # The process group is gone before full snapshot hashes are rechecked.
+        for reservation in readonly:
+            reservation.verify(limits, check)
         report = read_json(package_file(child / 'output', 'texture-report.json'))
         check()
         return report, plan.isolation
 
     def _validate_report(self, output, xnb, limits, check):
-        actual = tree_inventory(output, limits, checkpoint=check)
+        # The child and all descendants have stopped. Enumerate bounded file
+        # metadata once; the independent PNG decode below computes each actual
+        # file SHA256 and RGBA SHA256. The final merged tree is rehashed too.
+        actual = tree_inventory(output, limits, checkpoint=check, include_hashes=False)
         actual_by_path = {entry['path']: entry for entry in actual}
         check()
         report = read_json(package_file(output, 'texture-report.json'))
@@ -412,9 +477,9 @@ class TextureExtractor:
                 raise PipelineError('Texture source receipt mismatch')
             decoded = inspect_png(self._read_checked(package_file(output, name), limits.file_bytes, check))
             check()
-            if (name not in actual_by_path or actual_by_path[name]['sha256'] != decoded['sha256']
-                    or actual_by_path[name]['bytes'] != decoded['bytes']):
+            if name not in actual_by_path or actual_by_path[name]['bytes'] != decoded['bytes']:
                 raise PipelineError('Texture output changed during receipt verification')
+            actual_by_path[name]['sha256'] = decoded['sha256']
             if (any(row.get(k) != decoded[k] for k in ('sha256', 'width', 'height'))
                     or any(type(row.get(k)) is not int for k in ('width', 'height'))
                     or ('rgbaSha256' in row and row['rgbaSha256'] != decoded['rgbaSha256'])

@@ -22,6 +22,8 @@ import zlib
 from .contracts import REQUIRED_SUBMANIFESTS
 from .locale_semantics import REFERENCE as LOCALE_REFERENCE, embedded_baselines
 from .security import PipelineError, canonical_json
+from .static_il import (StaticILLimits, bounded_evidence_json, extract_item_default_stages,
+                        json_evidence_size, select_stage_sample)
 
 
 @dataclass(frozen=True)
@@ -31,7 +33,12 @@ class SemanticLimits:
     resource_bytes: int = 64 * 1024 * 1024
     resource_file_bytes: int = 16 * 1024 * 1024
     decoded_total_bytes: int = 64 * 1024 * 1024
+    output_bytes: int = 64 * 1024 * 1024
     table_rows: int = 1_000_000
+    type_count: int = 16_384
+    metadata_string_entries: int = 131_072
+    metadata_names_bytes: int = 8 * 1024 * 1024
+    type_fullname_bytes: int = 8 * 1024 * 1024
     sections: int = 96
     streams: int = 32
     string_bytes: int = 4096
@@ -113,6 +120,8 @@ class _Metadata:
         self.checkpoint = checkpoint or (lambda: None)
         self.checkpoint()
         self.limits = limits
+        self._string_cache = {}
+        self._decoded_name_bytes = 0
         self.reader = r = _Reader(data)
         if r.take(0, 2) != b'MZ':
             raise PipelineError('Input is not a PE image')
@@ -253,13 +262,27 @@ class _Metadata:
         return tuple(values), offset
 
     def string(self, index: int) -> str:
+        self.checkpoint()
+        if index in self._string_cache:
+            return self._string_cache[index]
+        if len(self._string_cache) >= self.limits.metadata_string_entries:
+            raise PipelineError('CLI metadata string entry limit exceeded')
         heap = self.streams['#Strings']
         start = heap.start + index
         heap.take(start, 1)
         end = heap.data.find(b'\x00', start, min(heap.end, start + self.limits.string_bytes + 1))
         if end < 0:
             raise PipelineError('Unterminated or oversized metadata string')
-        return heap.take(start, end - start).decode('utf-8', errors='strict')
+        size = end - start
+        # Heap offsets are the cache identity: shared references decode once,
+        # while distinct offsets (even with equal text) are each charged before
+        # decoding/insertion. The entry cap also bounds many empty/tiny names.
+        if self._decoded_name_bytes + size > self.limits.metadata_names_bytes:
+            raise PipelineError('CLI decoded metadata name byte limit exceeded')
+        value = heap.take(start, size).decode('utf-8', errors='strict')
+        self._string_cache[index] = value
+        self._decoded_name_bytes += size
+        return value
 
     def blob(self, index: int) -> tuple[bytes, int]:
         heap = self.streams['#Blob']
@@ -284,6 +307,11 @@ class _Metadata:
 
 
 def _types(meta: _Metadata) -> dict[int, dict]:
+    meta.checkpoint()
+    if meta.rows[2] > meta.limits.type_count:
+        raise PipelineError('CLI TypeDef count limit exceeded')
+    if meta.rows[41] > meta.rows[2]:
+        raise PipelineError('Invalid nested type relationship count')
     nested = {}
     for rid in range(1, meta.rows[41] + 1):
         (child, parent), _ = meta.row(41, rid)
@@ -299,13 +327,31 @@ def _types(meta: _Metadata) -> dict[int, dict]:
         previous_field = row[4]
         output[rid] = {'name': meta.string(row[1]), 'namespace': meta.string(row[2]),
                        'firstField': row[4], 'firstMethod': row[5], 'metadataOffset': offset}
+    full_name_sizes = {}
+    full_name_bytes = 0
     def resolve(rid, visited):
+        nonlocal full_name_bytes
+        meta.checkpoint()
         if len(visited) >= 64 or rid in visited:
             raise PipelineError('Cyclic or oversized nested type relationship')
         row = output[rid]
         if 'fullName' not in row:
-            row['fullName'] = ((resolve(nested[rid], visited | {rid}) + '+') if rid in nested
-                               else (row['namespace'] + '.' if row['namespace'] else '')) + row['name']
+            if rid in nested:
+                parent = nested[rid]
+                prefix = resolve(parent, visited | {rid})
+                size = full_name_sizes[parent] + 1 + len(row['name'].encode('utf-8'))
+                separator = '+'
+            else:
+                prefix = row['namespace']
+                separator = '.' if prefix else ''
+                size = len(prefix.encode('utf-8')) + len(separator) + len(row['name'].encode('utf-8'))
+            # Check the full expanded nested name before concatenation. Shared
+            # heap names do not exempt repeated per-TypeDef full-name storage.
+            if full_name_bytes + size > meta.limits.type_fullname_bytes:
+                raise PipelineError('CLI type full-name byte limit exceeded')
+            row['fullName'] = ''.join((prefix, separator, row['name']))
+            full_name_sizes[rid] = size
+            full_name_bytes += size
         return row['fullName']
     for rid in output:
         resolve(rid, set())
@@ -669,7 +715,8 @@ def _coverage(ids: dict, unsupported: list, locales: dict) -> dict:
     return families
 
 
-def extract_server_semantics(input_path: Path, limits: SemanticLimits = SemanticLimits(), checkpoint=None) -> dict:
+def extract_server_semantics(input_path: Path, limits: SemanticLimits = SemanticLimits(), checkpoint=None,
+                             item_stage_ids=None, il_limits: StaticILLimits = StaticILLimits()) -> dict:
     """Return immutable-file-derived evidence; never infer complete semantics.
 
     The binary's own assembly version is a declaration, not authentication. The
@@ -713,6 +760,25 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
         languages, resources, locales, ambiguous, identical = _languages(meta)
         baselines = embedded_baselines(languages, resources, checkpoint=checkpoint)
         checkpoint()
+        positive_ids = sorted({value for name,value in ids.get('ItemID', {}).items()
+                               if name.casefold() != 'count' and type(value) is int and value > 0})
+        if item_stage_ids is None:
+            selected_ids = select_stage_sample(positive_ids, il_limits.sample_ids)
+            selection = 'deterministic-observed-ID-sample'
+        else:
+            selected_ids = list(item_stage_ids)
+            if any(type(value) is not int for value in selected_ids) or not set(selected_ids) <= set(positive_ids):
+                raise PipelineError('Requested static IL IDs must belong to the observed positive literal ItemID domain')
+            selection = 'explicit-bounded-ID-batch'
+        selected_set = set(selected_ids)
+        selection_evidence = {'kind': selection, 'totalObservedPositiveIds': len(positive_ids),
+                                    'sampledCount': len(selected_set), 'sampledIds': sorted(selected_set),
+                                    'remainingCount': len(set(positive_ids) - selected_set),
+                                    'remainingIds': [value for value in positive_ids if value not in selected_set],
+                                    'remainingStatus': 'NOT_ANALYZED_IN_THIS_BATCH'}
+        item_stages = extract_item_default_stages(meta, types, selected_ids, il_limits, checkpoint,
+            selection=selection_evidence, input_sha256=hashlib.sha256(data).hexdigest())
+        checkpoint()
     except PipelineError:
         raise
     except (UnicodeError, struct.error, ValueError, RecursionError) as exc:
@@ -753,13 +819,13 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
                         'method': 'CLI-Assembly-table', 'assemblyMetadataOffset': assembly_offset,
                         'versionFileOffset': assembly_offset + 4, 'literalFields': version_fields}
     checkpoint()
-    return {'schemaVersion': 1, 'extractor': 'static-pe-cli-python-v1',
+    result = {'schemaVersion': 1, 'extractor': 'static-pe-cli-python-v1',
             'status': 'PARTIAL', 'executedInput': False, 'complete': False, 'publishable': False,
             'inputSha256': hashlib.sha256(data).hexdigest(), 'inputBytes': len(data),
             'input': {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)},
             'assembly': {'name': assembly_name, 'version': version, 'metadataOffset': assembly_offset},
             'gameVersionEvidence': version_evidence, 'idFamilies': id_families,
-            'loaderMethodEvidence': loader_methods,
+            'loaderMethodEvidence': loader_methods, 'itemDefaultStages': item_stages,
             'localeRuleEvidence': {**LOCALE_REFERENCE, 'binaryLoaderEquivalenceVerified': False,
                                    'jsonNetEmbeddedReferenceMatch': any(row.get('sha256') == LOCALE_REFERENCE['jsonNetReferenceSha256'] for row in resources)},
             'localization': {locale: {'strings': baselines[locale]['strings'], 'rawStrings': dict(sorted(rows.items())),
@@ -786,6 +852,13 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
                             'client-textures', 'player-draw-rules', 'worldgen-runtime-rules',
                             'compressed-raw-deflate-resources', 'external-assembly-resource-resolution'],
             'sourcePolicy': 'Binary metadata declarations are evidence, not operator identity/version pins'}
+    # Apply the same guard to API callers and CLI users. No complete JSON string
+    # or UTF-8 bytes are constructed before this size/cancellation preflight.
+    try:
+        json_evidence_size(result, limits.output_bytes, checkpoint)
+    except PipelineError as exc:
+        raise PipelineError('SEMANTIC_OUTPUT_REJECTED: ' + str(exc)) from exc
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -804,7 +877,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             with tempfile.NamedTemporaryFile(dir=args.output.parent, prefix='.server-semantics-', delete=False) as target:
                 temporary = Path(target.name)
-                target.write(canonical_json(result))
+                target.write(bounded_evidence_json(result, SemanticLimits().output_bytes))
                 target.flush()
                 os.fsync(target.fileno())
             os.replace(temporary, args.output)

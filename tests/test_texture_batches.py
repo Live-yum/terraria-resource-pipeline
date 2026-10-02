@@ -236,12 +236,14 @@ class TextureBatchTests(unittest.TestCase):
         process.poll.return_value = None
         counter = iter([False, True])
         plan = CommandPlan(('/synthetic-command',), self.root, {}, 'synthetic-only')
-        with patch('resource_pipeline.adapters.subprocess.Popen', return_value=process), \
+        with patch('resource_pipeline.adapters.subprocess.Popen', return_value=process) as launch, \
              patch('resource_pipeline.adapters.os.killpg') as kill, \
              self.assertRaisesRegex(PipelineError, 'cancelled'):
             TrustedAdapterRunner._execute(plan, AdapterLimits(), self.root, cancel_check=lambda: next(counter))
         kill.assert_called_once()
         process.wait.assert_called_once()
+        self.assertIs(launch.call_args.kwargs['close_fds'], True)
+        self.assertNotIn('pass_fds', launch.call_args.kwargs)
 
     def test_children_share_remaining_deadline_without_reset(self):
         self.sources(5)
@@ -549,3 +551,159 @@ class TextureBatchTests(unittest.TestCase):
             self.extractor.extract(self.source, self.job)
         self.assertEqual(len(self.calls), 1)
         self.assertFalse(self.job.exists())
+
+    def test_readonly_reservation_counts_equal_full_watchdog_and_prunes_only_snapshots(self):
+        from resource_pipeline.adapters import BubblewrapSandbox, _working_size
+        self.sources(3)
+        self.extractor.sandbox = BubblewrapSandbox(executable=self.runtime, runtime_roots=())
+        def verify_watchdog(plan, limits, job, **kwargs):
+            self.decode(plan, limits, job, **kwargs)
+            sealed = kwargs['reserved_readonly']
+            self.assertEqual({item.root for item in sealed}, {job / 'inputs', job / 'tool'})
+            full = _working_size(self.job, limits, reserved_output=kwargs['reserved_output'])
+            pruned = _working_size(self.job, limits, reserved_output=kwargs['reserved_output'], reserved_readonly=sealed)
+            self.assertEqual(pruned, full)
+            import os
+            original_walk = os.walk
+            visited = []
+            def walk(root, *args, **options):
+                for directory, dirs, files in original_walk(root, *args, **options):
+                    visited.append(Path(directory))
+                    yield directory, dirs, files
+            with patch('resource_pipeline.adapters.os.walk', side_effect=walk):
+                _working_size(self.job, limits, reserved_output=kwargs['reserved_output'], reserved_readonly=sealed)
+            self.assertNotIn(job / 'inputs', visited)
+            self.assertNotIn(job / 'tool', visited)
+            self.assertIn(job / 'work', visited)
+            self.assertIn(job / 'output', visited)
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=verify_watchdog):
+            self.extractor.extract(self.source, self.job)
+
+    def test_readonly_plan_rejects_writable_alias_fd_and_capability_changes(self):
+        from types import SimpleNamespace
+        from resource_pipeline.adapters import BubblewrapSandbox
+        child = self.job / 'work/child-0000'
+        sandbox = BubblewrapSandbox(executable=self.runtime, runtime_roots=())
+        plan = sandbox.plan(SimpleNamespace(command=(str(self.runtime), '/tool/TextureExtractor.dll')), child)
+        self.extractor._validate_readonly_plan(plan, child)
+        additions = [('--bind', str(child / 'inputs/package'), '/alias'),
+                     ('--ro-bind', str(child / 'tool'), '/alias'),
+                     ('--bind', str(child), '/parent-alias'),
+                     ('--bind', str(child / 'work'), '/inputs/alias'),
+                     ('--preserve-fds', '1'),
+                     ('--cap-add', 'SYS_ADMIN'), ('--args', '9'),
+                     ('--share-net',), ('--overlay-src', str(child / 'inputs')),
+                     ('--ro-bind-data', '1', '/inputs')]
+        for addition in additions:
+            argv = list(plan.argv)
+            end = argv.index('--')
+            argv[end:end] = addition
+            with self.subTest(addition=addition), self.assertRaises(PipelineError):
+                self.extractor._validate_readonly_plan(CommandPlan(tuple(argv), plan.cwd, plan.env, plan.isolation), child)
+        argv = list(plan.argv)
+        argv[argv.index(str(child / 'inputs')) - 1] = '--bind'
+        with self.assertRaises(PipelineError):
+            self.extractor._validate_readonly_plan(CommandPlan(tuple(argv), plan.cwd, plan.env, plan.isolation), child)
+        argv = list(plan.argv)
+        start = argv.index('--cap-drop')
+        del argv[start:start + 2]
+        with self.assertRaises(PipelineError):
+            self.extractor._validate_readonly_plan(CommandPlan(tuple(argv), plan.cwd, plan.env, plan.isolation), child)
+
+    def test_readonly_capture_rejects_hardlinks_and_special_files(self):
+        import os
+        from resource_pipeline.adapters import ReadOnlyTreeReservation
+        root = self.root / 'snapshot'
+        root.mkdir()
+        data = root / 'file'
+        data.write_bytes(b'synthetic')
+        expected = tree_inventory(root)
+        outside = self.root / 'writable-alias'
+        os.link(data, outside)
+        with self.assertRaisesRegex(PipelineError, 'links or special'):
+            ReadOnlyTreeReservation.capture(root, expected, AdapterLimits(), lambda: None)
+        outside.unlink()
+        data.unlink()
+        os.mkfifo(data)
+        with self.assertRaisesRegex(PipelineError, 'links or special'):
+            ReadOnlyTreeReservation.capture(root, expected, AdapterLimits(), lambda: None)
+
+    def test_readonly_mutation_is_rehashed_after_child_and_cleans_job(self):
+        from resource_pipeline.adapters import BubblewrapSandbox
+        self.sources(3)
+        self.extractor.sandbox = BubblewrapSandbox(executable=self.runtime, runtime_roots=())
+        def mutate_after_decode(plan, limits, job, **kwargs):
+            self.decode(plan, limits, job, **kwargs)
+            target = next((job / 'inputs/package').rglob('*.xnb'))
+            data = target.read_bytes()
+            target.unlink()
+            target.write_bytes(data[:-1] + b'\x01')
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=mutate_after_decode), self.assertRaisesRegex(PipelineError, 'snapshot hash changed'):
+            self.extractor.extract(self.source, self.job)
+        self.assertEqual(len(self.calls), 1)
+        self.assertFalse(self.job.exists())
+
+    def test_readonly_watchdog_rejects_replaced_root_and_keeps_mutable_caps(self):
+        from dataclasses import replace
+        from resource_pipeline.adapters import BubblewrapSandbox, _working_size
+        self.sources(3)
+        self.extractor.sandbox = BubblewrapSandbox(executable=self.runtime, runtime_roots=())
+        def live_checks(plan, limits, job, **kwargs):
+            self.decode(plan, limits, job, **kwargs)
+            sealed = kwargs['reserved_readonly']
+            options = {'reserved_output': kwargs['reserved_output'], 'reserved_readonly': sealed}
+            usage = _working_size(self.job, limits, **options)
+            for bound in (replace(limits, total_bytes=usage.bytes - 1), replace(limits, files=usage.paths - 1)):
+                with self.subTest(bound=bound), self.assertRaisesRegex(PipelineError, 'capacity'):
+                    _working_size(self.job, bound, **options)
+            original = job / 'inputs'
+            original.rename(job / 'changed-inputs')
+            original.mkdir()
+            with self.assertRaisesRegex(PipelineError, 'root changed'):
+                _working_size(self.job, limits, **options)
+            original.rmdir()
+            (job / 'changed-inputs').rename(original)
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=live_checks):
+            self.extractor.extract(self.source, self.job)
+
+    def test_copy_reuses_verified_inventory_but_rejects_drift_and_rehashes_both_trees(self):
+        from resource_pipeline.adapters import _copy_tree
+        self.sources(2)
+        expected = tree_inventory(self.source)
+        target = self.root / 'proof-copy'
+        with patch('resource_pipeline.adapters.tree_inventory', wraps=tree_inventory) as inventory:
+            result = _copy_tree(self.source, target, AdapterLimits(), expected_inventory=expected)
+        self.assertEqual(result, expected)
+        self.assertEqual([call.args[0] for call in inventory.call_args_list], [target, self.source])
+        next(self.source.rglob('*.xnb')).write_bytes(header(129))
+        with self.assertRaisesRegex(PipelineError, 'changed'):
+            _copy_tree(self.source, self.root / 'drift-copy', AdapterLimits(), expected_inventory=expected)
+
+    def test_custom_sandbox_never_uses_readonly_pruning(self):
+        self.sources(3)
+        with patch.object(TrustedAdapterRunner, '_execute', side_effect=self.decode):
+            self.extractor.extract(self.source, self.job)
+        self.assertTrue(all(kwargs['reserved_readonly'] == () for _, _, kwargs in self.calls))
+
+    def test_child_metadata_inventory_keeps_limits_and_uses_decoded_file_hash(self):
+        self.sources(3)
+        # The mocked converter's hash is checked against inspect_png; no hash
+        # claimed by the child is used as the ledger's filesystem evidence.
+        with patch('resource_pipeline.textures.tree_inventory', wraps=tree_inventory) as inventory, \
+             patch.object(TrustedAdapterRunner, '_execute', side_effect=self.decode):
+            result = self.extractor.extract(self.source, self.job)
+        child_scans = [call for call in inventory.call_args_list if call.kwargs.get('include_hashes') is False]
+        self.assertEqual(len(child_scans), 2)
+        self.assertTrue(all(row['sha256'] == sha256(self.png) for row in result['images']))
+        # Final merged tree and original-source inventories are still full hashes.
+        self.assertTrue(any(call.args[0] == self.job / 'output' and call.kwargs.get('include_hashes', True)
+                            for call in inventory.call_args_list))
+        root = self.root / 'metadata-only'
+        root.mkdir()
+        (root / 'file').write_bytes(b'1234')
+        self.assertEqual(tree_inventory(root, include_hashes=False), [{'path': 'file', 'bytes': 4}])
+        with self.assertRaisesRegex(PipelineError, 'byte budget'):
+            tree_inventory(root, AdapterLimits(total_bytes=3), include_hashes=False)
+        (root / 'link').symlink_to(root / 'file')
+        with self.assertRaisesRegex(PipelineError, 'Links and special'):
+            tree_inventory(root, include_hashes=False)

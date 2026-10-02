@@ -9,6 +9,7 @@ import re
 
 from .adapters import file_digest, tree_inventory
 from .security import PipelineError, atomic_write, canonical_json, sha256
+from .static_il import bounded_evidence_json
 
 FAMILIES = {
     'items': r'Item_(\d+)', 'tiles': r'Tiles_(\d+)', 'walls': r'Wall_(\d+)',
@@ -60,7 +61,7 @@ class RawEvidenceProducer:
             except PipelineError:
                 rejected.append({'sha256': digest, 'code': 'STATIC_METADATA_REJECTED'})
                 continue
-            atomic_write(output / f'server-{index}.json', canonical_json(evidence))
+            atomic_write(output / f'server-{index}.json', bounded_evidence_json(evidence, 64 * 1024 * 1024, checkpoint))
             assemblies.append({'sha256': digest, 'evidence': evidence, 'path': f'server-{index}.json'})
         id_sets = {}
         for assembly in assemblies:

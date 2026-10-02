@@ -1,5 +1,6 @@
 """Original, non-executable synthetic PE/CLI fixtures; no game binaries/strings."""
 import gzip
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -12,10 +13,10 @@ from unittest.mock import patch
 import zlib
 
 from resource_pipeline.security import PipelineError
-from resource_pipeline.server_semantics import SemanticLimits, _Metadata, extract_server_semantics, main
+from resource_pipeline.server_semantics import SemanticLimits, _Metadata, _types, extract_server_semantics, main
 
 
-def synthetic_pe(*, resources=None, pe64=False, bad_signature=False):
+def synthetic_pe(*, resources=None, pe64=False, bad_signature=False, repeated_types=0, repeated_name='RepeatedFixture'):
     strings = bytearray(b'\0')
     blobs = bytearray(b'\0')
     def string(value):
@@ -48,6 +49,12 @@ def synthetic_pe(*, resources=None, pe64=False, bad_signature=False):
     typedef('Terraria.ID', 'ArmorIDs', [])
     typedef('', 'Head', [('ExampleHat',5,15)])
     typedef('Terraria.ID', 'NumericID', [('SByte',4,-5),('Byte',5,250),('Int16',6,-200),('UInt16',7,65500),('Int32',8,-100000),('UInt32',9,4000000000),('Int64',10,-9000000000),('UInt64',11,18000000000000000000)])
+    if repeated_types:
+        # Many TypeDefs reference the same heap offsets, without duplicating
+        # their long names in the input. This is an original growth fixture.
+        shared_name,shared_namespace=string(repeated_name),string('Fixture')
+        typedefs.extend(struct.pack('<IHHHHH',0,shared_name,shared_namespace,0,len(fields)+1,1)
+                        for _ in range(repeated_types))
     if resources is None:
         resources = {
             'Terraria.Localization.Content.en-US.Main.json': b'{// fixture\n "ItemName": {"Example": "Synthetic Example",},"Misc":{"Literal":"http://fixture/"},}',
@@ -257,6 +264,88 @@ class ServerSemanticsTests(unittest.TestCase):
         for limits in [SemanticLimits(input_bytes=10), SemanticLimits(table_rows=1),SemanticLimits(metadata_bytes=10)]:
             with self.subTest(limits=limits),self.assertRaises(PipelineError):
                 self.extract(limits=limits)
+
+    def test_global_type_count_is_checked_before_reading_or_allocating_types(self):
+        data=synthetic_pe(resources={},repeated_types=100,repeated_name='X'*256)
+        meta=_Metadata(data,replace(SemanticLimits(),type_count=8))
+        with patch.object(meta,'row',side_effect=AssertionError('must reject before row traversal')):
+            with self.assertRaisesRegex(PipelineError,'TypeDef count limit'):_types(meta)
+        self.assertEqual({},meta._string_cache)
+        with self.assertRaisesRegex(PipelineError,'TypeDef count limit'):
+            self.extract(data,replace(SemanticLimits(),type_count=8))
+
+    def test_metadata_string_cache_charges_heap_offsets_once_and_bounds_names(self):
+        data=synthetic_pe(resources={},repeated_types=100,repeated_name='🦖'*64)
+        meta=_Metadata(data,SemanticLimits())
+        rows=_types(meta)
+        self.assertEqual(1,len({id(rows[n]['name']) for n in range(7,107)}))
+        name_index=meta.row(2,7)[0][1]
+        before=(meta._decoded_name_bytes,len(meta._string_cache))
+        with patch.object(meta.streams['#Strings'],'take',side_effect=AssertionError('cache hit must not decode')):
+            self.assertIs(rows[7]['name'],meta.string(name_index))
+        self.assertEqual(before,(meta._decoded_name_bytes,len(meta._string_cache)))
+        limited=_Metadata(data,replace(SemanticLimits(),metadata_names_bytes=255))
+        with self.assertRaisesRegex(PipelineError,'decoded metadata name byte limit'):
+            limited.string(name_index)
+        self.assertEqual({},limited._string_cache)
+        self.assertEqual(0,limited._decoded_name_bytes)
+        exact=_Metadata(data,replace(SemanticLimits(),metadata_names_bytes=256))
+        self.assertEqual('🦖'*64,exact.string(name_index))
+        self.assertEqual(256,exact._decoded_name_bytes)
+        namespace_index=meta.row(2,7)[0][2]
+        with self.assertRaisesRegex(PipelineError,'decoded metadata name byte limit'):exact.string(namespace_index)
+        self.assertEqual(1,len(exact._string_cache))
+
+    def test_metadata_cache_entry_cap_handles_empty_and_tiny_names(self):
+        data=synthetic_pe(resources={})
+        meta=_Metadata(data,replace(SemanticLimits(),metadata_string_entries=2))
+        # Index zero and the module's empty namespace are distinct valid heap
+        # offsets containing empty strings, so bytes alone cannot bound entries.
+        namespace=meta.row(2,1)[0][2]
+        self.assertNotEqual(0,namespace)
+        self.assertEqual('',meta.string(0));self.assertEqual('',meta.string(namespace))
+        with self.assertRaisesRegex(PipelineError,'metadata string entry limit'):
+            meta.string(meta.row(2,1)[0][1])
+        self.assertEqual(2,len(meta._string_cache))
+        self.assertEqual(0,meta._decoded_name_bytes)
+
+    def test_shared_type_names_still_pay_full_expanded_name_budget(self):
+        data=synthetic_pe(resources={},repeated_types=100,repeated_name='X'*256)
+        meta=_Metadata(data,replace(SemanticLimits(),type_fullname_bytes=4096))
+        with self.assertRaisesRegex(PipelineError,'type full-name byte limit'):_types(meta)
+        self.assertLess(meta._decoded_name_bytes,1024)
+        # Exact-size acceptance, including multibyte names and nested '+' names.
+        unicode_data=synthetic_pe(resources={},repeated_types=3,repeated_name='汉字')
+        types=_types(_Metadata(unicode_data,SemanticLimits()))
+        total=sum(len(row['fullName'].encode('utf-8')) for row in types.values())
+        self.assertEqual(types,_types(_Metadata(unicode_data,replace(SemanticLimits(),type_fullname_bytes=total))))
+        with self.assertRaisesRegex(PipelineError,'type full-name byte limit'):
+            _types(_Metadata(unicode_data,replace(SemanticLimits(),type_fullname_bytes=total-1)))
+        with self.assertRaisesRegex(PipelineError,'type full-name byte limit'):
+            self.extract(data,replace(SemanticLimits(),type_fullname_bytes=4096))
+
+    def test_cancellation_checks_cached_reads_and_nested_name_resolution(self):
+        meta=_Metadata(synthetic_pe(resources={}),SemanticLimits())
+        meta.string(0)
+        def cancel():raise PipelineError('cancelled cached-name inspection')
+        meta.checkpoint=cancel
+        with self.assertRaisesRegex(PipelineError,'cancelled cached-name'):meta.string(0)
+        meta=_Metadata(synthetic_pe(resources={}),SemanticLimits())
+        original_row=meta.row
+        def row(table,rid):
+            value=original_row(table,rid)
+            if table==2 and rid==meta.rows[2]:
+                # Keep this row's string decoding live, then cancel at resolve.
+                original_string=meta.string
+                reads=[0]
+                def string(index):
+                    result=original_string(index);reads[0]+=1
+                    if reads[0]==2:meta.checkpoint=cancel
+                    return result
+                meta.string=string
+            return value
+        meta.row=row
+        with self.assertRaisesRegex(PipelineError,'cancelled cached-name'):_types(meta)
 
     def test_truncated_and_non_managed_inputs_fail_closed(self):
         data = synthetic_pe()

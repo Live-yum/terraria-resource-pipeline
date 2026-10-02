@@ -55,7 +55,11 @@ class Pipeline:
 
     @staticmethod
     def git(arguments: list[str], cwd: Path | None = None) -> str:
-        result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", *arguments], cwd=cwd, text=True,
+        # Jobs own their local repositories. Do not leave automatic Git
+        # maintenance children writing after a bounded command has returned.
+        result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null",
+                                 "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+                                 "-c", "gc.autoDetach=false", *arguments], cwd=cwd, text=True,
                                 encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         if result.returncode:
             raise PipelineError("Local Git publication operation failed")
