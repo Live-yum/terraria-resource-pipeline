@@ -7,8 +7,9 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from .adapters import file_digest, tree_inventory
-from .security import PipelineError, atomic_write, canonical_json, sha256
+from .adapters import AdapterLimits, file_digest, tree_inventory
+from .contracts import package_file
+from .security import PipelineError, atomic_write, canonical_json, relative_path, sha256
 from .static_il import bounded_evidence_json
 from .locale_mapping import extract_locale_mapping
 
@@ -30,6 +31,66 @@ REQUIRED_SEMANTICS = {
     'pixel': ['candidatePalette', 'rgbIndex', 'baseHashBinding'],
 }
 
+def _validated_expected_inventories(sources: dict[str, Path], expected: dict, checkpoint) -> dict[str, list[dict]]:
+    """Copy only locally computed ZIP inventories; this is not an upload field.
+
+    Structural checks finish for every role before any source-file read. The
+    producer must still rehash every complete source tree before its manifest.
+    """
+    limits = AdapterLimits()
+    if (type(expected) is not dict or set(expected) != set(sources)
+            or any(type(role) is not str or role not in ('server', 'client') for role in expected)):
+        raise PipelineError('Verified source inventory roles do not match source roots')
+    result = {}
+    total_bytes = total_paths = 0
+    for role, rows in expected.items():
+        checkpoint()
+        if type(rows) is not list or len(rows) > limits.files:
+            raise PipelineError('Verified source inventory exceeds file-count policy')
+        copied, files, directories = [], {}, {}
+        for row in rows:
+            checkpoint()
+            if type(row) is not dict or set(row) != {'path', 'bytes', 'sha256'}:
+                raise PipelineError('Invalid verified source inventory row')
+            name, size, digest = row['path'], row['bytes'], row['sha256']
+            if (type(name) is not str or len(name) > 600 or type(size) is not int or not 0 <= size <= limits.file_bytes
+                    or type(digest) is not str or len(digest) != 64 or re.fullmatch('[a-f0-9]{64}', digest) is None):
+                raise PipelineError('Invalid verified source inventory fields')
+            relative_path(name)
+            if name.casefold() in files:
+                raise PipelineError('Verified source inventory path collision')
+            files[name.casefold()] = name
+            total_bytes += size
+            if total_bytes > limits.total_bytes:
+                raise PipelineError('Verified source inventory exceeds byte budget')
+            copied.append({'path': name, 'bytes': size, 'sha256': digest})
+        for row in copied:
+            checkpoint()
+            for parent in Path(row['path']).parents:
+                if parent == Path('.'):
+                    continue
+                name = parent.as_posix()
+                key = name.casefold()
+                if key in files or (key in directories and directories[key] != name):
+                    raise PipelineError('Verified source inventory file/directory collision')
+                directories[key] = name
+                if total_paths + len(files) + len(directories) > limits.files:
+                    raise PipelineError('Verified source inventory exceeds path-count policy')
+        total_paths += len(files) + len(directories)
+        if total_paths > limits.files:
+            raise PipelineError('Verified source inventory exceeds path-count policy')
+        result[role] = sorted(copied, key=lambda row: row['path'])
+    # Defer filesystem checks until ALL metadata is structurally safe. In
+    # particular, malformed client metadata cannot cause an earlier server read.
+    for root in sources.values():
+        checkpoint()
+        if (not isinstance(root, Path) or any(path.is_symlink() for path in (root, *root.parents))
+                or not root.is_dir()):
+            raise PipelineError('Verified source root must be a regular directory without links')
+    checkpoint()
+    return result
+
+
 class RawEvidenceProducer:
     """Installed original parser, never selected by uploaded command/metadata."""
     adapter_id = 'terraria-static-metadata-and-raw-textures-v1'
@@ -41,21 +102,28 @@ class RawEvidenceProducer:
             inspect_server = extract_server_semantics
         self.inspect_server = inspect_server
 
-    def produce(self, sources: dict[str, Path], textures: dict, output: Path, *, checkpoint=lambda: None) -> dict:
+    def produce(self, sources: dict[str, Path], textures: dict, output: Path, *, checkpoint=lambda: None,
+                expected_inventories: dict[str, list[dict]] | None = None) -> dict:
         checkpoint()
         if output.exists() or any(p.is_symlink() for p in [output, *output.parents]):
             raise PipelineError('Evidence output must be a new private directory')
+        inventories = (_validated_expected_inventories(sources, expected_inventories, checkpoint)
+                       if expected_inventories is not None else
+                       {role: tree_inventory(root, checkpoint=checkpoint) for role, root in sources.items()})
         output.mkdir(parents=True)
-        inventories = {role: tree_inventory(root, checkpoint=checkpoint) for role, root in sources.items()}
         bindings = {role: {'treeSha256': sha256(canonical_json(rows))} for role, rows in inventories.items()}
         server = sources.get('server')
-        executables = [server / row['path'] for row in inventories.get('server', []) if Path(row['path']).name == 'TerrariaServer.exe']
+        executables = [row for row in inventories.get('server', []) if Path(row['path']).name == 'TerrariaServer.exe']
         if len(executables) > 4:
             raise PipelineError('Ambiguous server executable inventory')
         assemblies, rejected, mappings = [], [], []
-        for index, path in enumerate(executables):
+        for index, source_row in enumerate(executables):
             checkpoint()
+            # Inventory reuse cannot bypass link checks on paths actually read.
+            path = package_file(server, source_row['path'])
             digest = file_digest(path, checkpoint=checkpoint)
+            if digest != source_row['sha256']:
+                raise PipelineError('Static metadata source differs from verified inventory')
             try:
                 options={'checkpoint':checkpoint}
                 if self._builtin_inspector:options['requested_locales']=('en-US','zh-Hans')

@@ -14,6 +14,8 @@ from .security import PipelineError
 
 @dataclass(frozen=True)
 class TextureBatchPolicy:
+    # Scheduling window; the default is retained until real comparison passes.
+    # Decoder pixel, memory, time, disk and path/report hard limits are separate.
     files_per_child: int = 256
     child_pixels: int = 256_000_000
     image_pixels: int = 16_000_000
@@ -23,12 +25,12 @@ class TextureBatchPolicy:
     expanded_bytes: int = 4 * 1024**3
 
     def __post_init__(self):
-        maxima = (256, 256_000_000, 16_000_000, 256, 1_024_000_000, 4 * 1024**3)
+        maxima = (1024, 256_000_000, 16_000_000, 256, 1_024_000_000, 4 * 1024**3)
         values = (self.files_per_child, self.child_pixels, self.image_pixels,
                   self.max_children, self.total_pixels, self.expanded_bytes)
         if any(type(value) is not int or not 0 < value <= maximum
                for value, maximum in zip(values, maxima)):
-            raise ValueError('Texture batch policy may tighten, never raise, fixed limits')
+            raise ValueError('Texture batch policy exceeds its scheduling or resource bound')
 
 
 @dataclass(frozen=True)

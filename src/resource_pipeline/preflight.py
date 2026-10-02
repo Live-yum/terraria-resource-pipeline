@@ -178,6 +178,7 @@ class RawInputPreflight:
                 self.pipeline.save(job)
                 return True
             expanded = entries = 0
+            verified_inventories = {}
             for role in ("server", "client"):
                 if stopped(): return job
                 source = job["sources"].get(role)
@@ -215,6 +216,9 @@ class RawInputPreflight:
                     entries += inventory["entryCount"]
                     source["inventory"] = inventory
                     source["inventoryStatus"] = "verified"
+                    # Separate in-memory proof from the mutable durable job
+                    # record; only bytes hashed by this extract_zip call qualify.
+                    verified_inventories[role] = tuple(dict(row) for row in inventory["files"])
                 except BaseException as exc:
                     # Keep the source archive and successful inventory for review;
                     # partial expansion never becomes accepted evidence.
@@ -268,7 +272,13 @@ class RawInputPreflight:
                 roots = {role: directory / f"{role}-files" for role, source in job["sources"].items()
                          if source.get("inventoryStatus") == "verified"}
                 try:
-                    job["producerEvidence"] = self.semantic_producer.produce(roots, job["textures"], directory / "adapter-evidence", checkpoint=checkpoint)
+                    from .real_producer import RawEvidenceProducer
+                    options = {"checkpoint": checkpoint}
+                    if type(self.semantic_producer) is RawEvidenceProducer:
+                        options["expected_inventories"] = {role: [dict(row) for row in verified_inventories[role]]
+                                                           for role in roots}
+                    job["producerEvidence"] = self.semantic_producer.produce(roots, job["textures"],
+                        directory / "adapter-evidence", **options)
                     blockers.append(self._block("SEMANTIC_COVERAGE_INCOMPLETE", "静态程序集与原始纹理证据已生成；完整属性、动态说明、帧及像素规则尚未核实，不能审核发布"))
                 except PipelineError:
                     blockers.append(self._block("SEMANTIC_PRODUCER_REJECTED", "真实语义生产器拒绝输入，未生成可审核候选"))
