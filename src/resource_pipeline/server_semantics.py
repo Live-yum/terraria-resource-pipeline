@@ -560,7 +560,7 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
     path = Path(input_path)
     if any(part.is_symlink() for part in (path, *path.parents)):
         raise PipelineError('Server input cannot traverse symlinks')
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
     with os.fdopen(descriptor, 'rb') as source:
         before = os.fstat(source.fileno())
         if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= limits.input_bytes:

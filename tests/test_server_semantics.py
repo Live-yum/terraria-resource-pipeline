@@ -2,11 +2,13 @@
 import gzip
 import hashlib
 import json
+import os
 import importlib.util
 from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 import zlib
 
 from resource_pipeline.security import PipelineError
@@ -224,6 +226,13 @@ class ServerSemanticsTests(unittest.TestCase):
         with self.assertRaisesRegex(PipelineError,'Overlapping'):
             self.extract(bytes(data))
 
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'POSIX FIFO test')
+    def test_fifo_input_is_rejected_without_waiting_for_a_writer(self):
+        fifo = self.root / 'pipe.exe'
+        os.mkfifo(fifo)
+        with self.assertRaisesRegex(PipelineError, 'regular file'):
+            extract_server_semantics(fifo)
+
     def test_symlink_input_and_parent_refused(self):
         self.input.write_bytes(synthetic_pe())
         link = self.root / 'linked.exe'
@@ -276,8 +285,9 @@ class ServerSemanticsTests(unittest.TestCase):
         self.assertEqual(3,evidence['families']['items']['literalRecordCount'])
         self.assertEqual(2,evidence['locales']['en-US']['keyCount'])
         self.assertEqual(1,evidence['families']['items']['numericSamples'][1]['value'])
-        with self.assertRaisesRegex(PipelineError,'restricted'):
-            module.run(self.root,self.root / 'redacted.json')
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+            with self.assertRaisesRegex(PipelineError,'restricted'):
+                module.run(self.root,self.root / 'redacted.json')
 
     def test_cli_rejects_output_symlink(self):
         self.input.write_bytes(synthetic_pe())
