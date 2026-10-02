@@ -16,6 +16,7 @@ from .fixtures import demo_archive
 from .intake import UploadBodyLimitMiddleware
 from .pipeline import Pipeline
 from .preflight import RawInputPreflight
+from .textures import configured_texture_extractor
 from .security import ArchiveLimits, PipelineError, relative_path
 
 
@@ -28,7 +29,7 @@ class Review(BaseModel):
 def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
     state_root = root or Path(os.environ.get("RESOURCE_PIPELINE_STATE", ".runtime"))
     pipeline = Pipeline(state_root)
-    raw_preflight = RawInputPreflight(pipeline)
+    raw_preflight = RawInputPreflight(pipeline, texture_extractor=configured_texture_extractor())
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="resource-extract")
 
     @asynccontextmanager
@@ -69,6 +70,11 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
                     if inventory is not None:
                         source["inventory"] = {"expandedBytes": inventory["expandedBytes"],
                                                "fileCount": len(inventory["files"])}
+                for texture in job.get("textures", {}).values():
+                    for key in ("images", "skipped"):
+                        rows = texture.pop(key, None)
+                        if rows is not None:
+                            texture[key + "Count"] = len(rows)
         return results
 
     @app.get("/api/jobs/{identity}")

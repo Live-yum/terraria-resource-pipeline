@@ -13,3 +13,6 @@ extracted/
 node_modules/
 playwright-report/
 test-results/
+
+**/bin/
+**/obj/

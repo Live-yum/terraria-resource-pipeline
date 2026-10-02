@@ -38,6 +38,10 @@ node --check web/app.js && node --check web/cache.js
 
 版本提示与包内元数据不作为证明；默认未登记真实来源哈希、未接入真实生产器。即使操作者登记了同版本源包，当前入口也只做预检。详见 [双来源预检](docs/RAW-PREFLIGHT.zh-CN.md) 和 [资源设计与真实验收](docs/RESOURCE-DESIGN.zh-CN.md)。
 
+## 自动原始贴图提取
+
+已集成 TConvert 的公开 LZX/DXT 关键逻辑，管理员安装后，原始上传中的 XNB 自动转为 PNG；支持服务端和 Content 合并为一个 ZIP，用户无需手工提取。无纹理输入会明确报告，图片解码不会放开完整语义发布门禁。见 [自动贴图提取](docs/AUTOMATIC-TEXTURES.zh-CN.md)。
+
 ## 已有 PNG 输出预检
 
 已有桌面工具提取的 PNG ZIP 可独立检查图片哈希、尺寸和像素重复，不执行上传代码。此入口仍不能证明真实版本、语义覆盖或发布权利；暂未接入网页上传/发布。见 [私有 PNG 导入检查](docs/DECODED-IMAGES.zh-CN.md)。

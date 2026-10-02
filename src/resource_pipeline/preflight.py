@@ -38,8 +38,9 @@ class TrustedSource:
 class RawInputPreflight:
     """Shares durable job records with Pipeline; all raw jobs stay unpublishable."""
     def __init__(self, pipeline, limits: ArchiveLimits = ArchiveLimits(),
-                 trusted_sources: tuple[TrustedSource, ...] = ()):
+                 trusted_sources: tuple[TrustedSource, ...] = (), texture_extractor=None):
         self.pipeline = pipeline
+        self.texture_extractor = texture_extractor
         self.limits = limits
         self.trusted_sources = {}
         for source in trusted_sources:
@@ -159,13 +160,40 @@ class RawInputPreflight:
                     source["versionEvidence"] = {"status": "unverified", "gameVersion": None, "method": None}
                     blockers.append(self._block("INVALID_ARCHIVE", str(exc)[:500] if isinstance(exc, PipelineError)
                                                else "ZIP 无法安全读取", role))
+            # Decode raw textures automatically when present in either uploaded
+            # package, including a combined server + Content ZIP. Never accept
+            # game code as a converter and never treat PNG reuse as this step.
+            job["textures"] = {}
+            for role, source in job["sources"].items():
+                if source.get("inventoryStatus") != "verified":
+                    continue
+                paths = source["inventory"]["files"]
+                count = sum(row["path"].lower().endswith(".xnb") for row in paths)
+                if count == 0:
+                    job["textures"][role] = {"status": "NO_XNB_PAYLOAD", "imageCount": 0,
+                                            "executedInput": False, "publishable": False}
+                elif self.texture_extractor is None:
+                    job["textures"][role] = {"status": "CONVERTER_NOT_INSTALLED", "xnbCount": count}
+                else:
+                    try:
+                        job["textures"][role] = self.texture_extractor.extract(
+                            directory / f"{role}-files", directory / f"{role}-texture-job")
+                    except PipelineError as exc:
+                        job["textures"][role] = {"status": "BLOCKED", "error": str(exc),
+                                                "publishable": False}
+            if any(any(row["path"].lower().endswith(".xnb") for row in source.get("inventory", {}).get("files", []))
+                   for source in job["sources"].values()):
+                if any(blocker["code"] == "MISSING_CLIENT_INPUT" for blocker in blockers):
+                    blockers = [blocker for blocker in blockers if blocker["code"] != "MISSING_CLIENT_INPUT"]
+                    blockers.append(self._block("COMBINED_TEXTURE_SOURCE_UNVERIFIED",
+                        "包内发现 XNB，可自动尝试解码；仍需验证原始客户端贴图来源、版本和覆盖，不能据此认定客户端资源完整"))
             versions = {source["versionEvidence"]["gameVersion"] for source in job["sources"].values()
                         if source.get("versionEvidence", {}).get("status") == "verified"}
             if len(versions) > 1:
                 blockers.append(self._block("SOURCE_VERSION_MISMATCH", "服务端与客户端的可信版本不一致"))
             # A separate adapter runner exists, but no real producer is installed
             # or connected to this intake endpoint. Never fall back to synthetic.
-            blockers.append(self._block("NO_TRUSTED_ADAPTER", "此预检服务尚未安装并接入真实版本可信适配器；未执行提取，不能审核或发布"))
+            blockers.append(self._block("NO_TRUSTED_ADAPTER", "此预检服务尚未安装并接入真实版本可信适配器；完整游戏语义未提取，不能审核或发布"))
             job.update(state="BLOCKED", blockers=blockers, extractedBytes=expanded,
                        archiveEntries=entries, executedInput=False, extractionComplete=False,
                        error="；".join(blocker["message"] for blocker in blockers))

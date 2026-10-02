@@ -55,14 +55,15 @@ $('upload').onsubmit=async event=>{
 };
 function renderRaw(job){
   $('raw-blockers').replaceChildren();$('raw-sources').replaceChildren();
-  status('raw-upload-status',`${stateLabels[job.state]||job.state} · 仅检查来源，未执行或发布`,job.state==='BLOCKED'||job.state==='INTERRUPTED');
+  status('raw-upload-status',`${stateLabels[job.state]||job.state} · 来源检查与自动贴图解码；未执行游戏或发布`,job.state==='BLOCKED'||job.state==='INTERRUPTED');
   for(const blocker of job.blockers||[])$('raw-blockers').append(node('li',blocker.message));
   for(const [role,source] of Object.entries(job.sources||{})){
     const article=node('article',undefined,'raw-source');article.append(node('h3',role==='server'?'服务端来源':'客户端 Content 来源'));
     const list=node('dl');const version=source.versionEvidence;
     for(const [label,value] of [['文件',source.filename],['ZIP SHA-256',source.archiveSha256],['上传体积',`${source.archiveBytes} 字节`],['可信版本',version?.status==='verified'?version.gameVersion:'未验证'],['文件清单',source.inventory?`${source.inventory.fileCount??source.inventory.files?.length??0} 个文件，展开 ${source.inventory.expandedBytes} 字节`:'尚无有效清单']])list.append(node('dt',label),node('dd',value));
+    const texture=job.textures?.[role];if(texture){const labels={TEXTURES_DECODED:'已自动解码原始 XNB',NO_XNB_PAYLOAD:'此包不含原始 XNB 贴图',NO_SUPPORTED_TEXTURES:'仅含未支持的 XNB 类型',CONVERTER_NOT_INSTALLED:'尚未安装可信贴图转换器',BLOCKED:'贴图转换被阻止'};list.append(node('dt','自动贴图提取'),node('dd',`${labels[texture.status]||texture.status} · ${texture.imageCount??0} 张`));}
     article.append(list);const details=node('details'),summary=node('summary','展开逐文件 SHA-256 与调试详情'),pre=node('pre','展开后读取完整清单');details.append(summary,pre);
-    details.ontoggle=async()=>{if(!details.open||details.dataset.loaded)return;details.dataset.loaded='loading';try{const full=await api(`/api/jobs/${job.id}`);pre.textContent=JSON.stringify(full.sources[role],null,2);details.dataset.loaded='yes';}catch(error){pre.textContent=error.message;delete details.dataset.loaded;}};
+    details.ontoggle=async()=>{if(!details.open||details.dataset.loaded)return;details.dataset.loaded='loading';try{const full=await api(`/api/jobs/${job.id}`);pre.textContent=JSON.stringify({source:full.sources[role],textures:full.textures?.[role]},null,2);details.dataset.loaded='yes';}catch(error){pre.textContent=error.message;delete details.dataset.loaded;}};
     article.append(details);$('raw-sources').append(article);
   }
 }
