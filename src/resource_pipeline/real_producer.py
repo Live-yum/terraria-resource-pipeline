@@ -12,6 +12,7 @@ from .contracts import package_file
 from .security import PipelineError, atomic_write, canonical_json, relative_path, sha256
 from .static_il import bounded_evidence_json
 from .locale_mapping import extract_locale_mapping
+from . import research_semantics
 
 FAMILIES = {
     'items': r'Item_(\d+)', 'tiles': r'Tiles_(\d+)', 'walls': r'Wall_(\d+)',
@@ -30,6 +31,53 @@ REQUIRED_SEMANTICS = {
     'hair': ['frameLayout', 'styleMapping'],
     'pixel': ['candidatePalette', 'rgbIndex', 'baseHashBinding'],
 }
+
+
+def _research_evidence(path: Path, source_row: dict, output: Path, index: int, checkpoint) -> dict:
+    """Keep research tables private and select the model by inspected bytes only.
+
+    An unknown hash is unsupported even if its path says Windows. The model's
+    invariant ASCII case mapping is explicit; no runtime culture is established.
+    Failures, including the caller's cancellation/deadline, must escape this
+    stage so that no adapter manifest can endorse incomplete evidence.
+    """
+    checkpoint()
+    profile = research_semantics.PROFILE
+    digest = source_row['sha256']
+    if digest == profile['inputSha256']:
+        model = research_semantics.extract_research_semantics(
+            path, platform=profile['platform'], culture='invariant', checkpoint=checkpoint)
+    else:
+        # Reject unknown profiles before parsing them; unsupported metadata or a
+        # custom static inspector must not make their platform appear verified.
+        model = {
+            'schemaVersion': 1, 'family': 'creative-research', 'status': 'UNSUPPORTED_PROFILE',
+            'executedInput': False, 'publishable': False, 'complete': False,
+            'researchModelComplete': False, 'culture': 'invariant',
+            'profile': dict(profile), 'sourceReference': dict(research_semantics.REFERENCE),
+            'input': {'sha256': digest, 'bytes': source_row['bytes'], 'platform': 'unknown'},
+            'scope': 'research base definitions and one-hop persistent ID overrides only',
+            'assumptions': ['Invariant-equivalent ASCII category model only; runtime culture not verified'],
+            'unsupportedScope': ['unrecognized binary/platform', 'runtime culture and state',
+                                 'Item.SetDefaults', 'full item semantics and publication'],
+            'reason': 'Input SHA-256 does not match the fixed audited Windows research profile',
+        }
+    checkpoint()
+    if (model.get('input', {}).get('sha256') != digest
+            or model.get('input', {}).get('bytes') != source_row['bytes']):
+        raise PipelineError('Research source differs from verified inventory')
+    encoded = bounded_evidence_json(model, research_semantics.ResearchLimits().evidence_bytes, checkpoint)
+    # The reviewed allowlist excludes tables, per-row origins and override pairs
+    # from ALL receipts, including uncompressed job responses and polling.
+    summary = research_semantics.research_summary(model)
+    summary['runtimeCultureVerified'] = False
+    bounded_evidence_json(summary, 64 * 1024, checkpoint)
+    evidence_path = f'server-{index}-research.json'
+    checkpoint()
+    atomic_write(output / evidence_path, encoded)
+    return {'sourceSha256': digest, 'path': evidence_path, 'sha256': sha256(encoded),
+            'summary': summary}
+
 
 def _validated_expected_inventories(sources: dict[str, Path], expected: dict, checkpoint) -> dict[str, list[dict]]:
     """Copy only locally computed ZIP inventories; this is not an upload field.
@@ -116,7 +164,7 @@ class RawEvidenceProducer:
         executables = [row for row in inventories.get('server', []) if Path(row['path']).name == 'TerrariaServer.exe']
         if len(executables) > 4:
             raise PipelineError('Ambiguous server executable inventory')
-        assemblies, rejected, mappings = [], [], []
+        assemblies, rejected, mappings, research = [], [], [], []
         for index, source_row in enumerate(executables):
             checkpoint()
             # Inventory reuse cannot bypass link checks on paths actually read.
@@ -124,6 +172,7 @@ class RawEvidenceProducer:
             digest = file_digest(path, checkpoint=checkpoint)
             if digest != source_row['sha256']:
                 raise PipelineError('Static metadata source differs from verified inventory')
+            research.append(_research_evidence(path, source_row, output, index, checkpoint))
             try:
                 options={'checkpoint':checkpoint}
                 if self._builtin_inspector:options['requested_locales']=('en-US','zh-Hans')
@@ -185,12 +234,21 @@ class RawEvidenceProducer:
                 for mapping in mappings if any(channel['family']==family for channel in mapping['channels'].values())]
             if rows:
                 atomic_write(output / f'{family}-textures.json', canonical_json(rows))
+        coverage['items']['researchSubcapabilities'] = [
+            {'capability': 'creativeResearchConditionalModel',
+             'status': item['summary']['status'], 'conditional': True, 'complete': False,
+             'researchModelComplete': item['summary']['researchModelComplete'],
+             'culture': 'invariant', 'runtimeCultureVerified': False,
+             'sourceSha256': item['sourceSha256'], 'evidencePath': item['path'],
+             'evidenceSha256': item['sha256']}
+            for item in research]
         manifest = {'schemaVersion': 1, 'adapterId': self.adapter_id,
             'status': 'PARTIAL', 'executedInput': False, 'extractionComplete': False,
             'publishable': False, 'inputBinding': bindings,
             'serverMetadata': [{k: v for k, v in item.items() if k != 'evidence'} for item in assemblies],
             'rejectedServerMetadata': rejected, 'familyCoverage': coverage,
             'localeMappingEvidence':mappings,
+            'researchEvidence': research,
             'unclassifiedDecodedImages': unclassified,
             'versionEvidence': [item['evidence'].get('gameVersionEvidence') for item in assemblies],
             'blockers': ['GAME_VERSION_AND_FULL_SEMANTICS_NOT_VERIFIED']}
