@@ -217,7 +217,7 @@ def _extract(p, evidence):
     factory_evidence['freshConstructor'] = constructor
     # Empty custom pairs bypass the unmodeled reflection/conversion region.
     # This remains a conditional effect plus local argument slice, not a pool
-    # lifecycle proof, and does not remove any whole-initializer residual call.
+    # lifecycle proof. A separate exact-prefix bridge may discharge one occurrence.
     from .set_factory_empty_custom import prove_empty_custom_set, _empty_calls
     try:
         custom = prove_empty_custom_set(p)
@@ -226,6 +226,17 @@ def _extract(p, evidence):
         if 'LIMIT' in exc.code:
             raise
         custom = {'status': exc.code, 'wholeInitializerProven': False}
+    from .set_factory_callsite import prove_first_custom_call
+    try:
+        _require(custom['status'] == 'PROVEN_EMPTY_PAIR_NORMAL_RETURN_EFFECTS',
+                 'FIRST_CUSTOM_METHOD_UNPROVEN')
+        first_custom = prove_first_custom_call(p, constructor, custom)
+    except ILUnsupported as exc:
+        if 'LIMIT' in exc.code:
+            raise
+        first_custom = {'status': exc.code, 'wholeInitializerProven': False}
+    evidence.charge(first_custom)
+    factory_evidence['firstCustomCall'] = first_custom
     evidence.charge(custom)
     factory_evidence['emptyCustomSet'] = custom
     recipes = []
@@ -267,6 +278,12 @@ def _extract(p, evidence):
     for method in (count_method, cctor, ctor):
         for ins in method['instructions']:
             p.budget.check()
+            # Discharge an occurrence, never every call to the same MethodSpec.
+            if (first_custom['status'] == 'PROVEN_FIRST_CUSTOM_CALL_NORMAL_RETURN_SLICE'
+                    and _hex(method['token']) == first_custom['callerMethodToken']
+                    and ins.offset == first_custom['callIlOffset']
+                    and _hex(ins.operand) == first_custom['targetToken']):
+                continue
             if ins.opcode in (0x28,0x6f,0x73) and ins.operand not in accepted_calls:
                 key = (method['token'], ins.operand)
                 if key not in residual:

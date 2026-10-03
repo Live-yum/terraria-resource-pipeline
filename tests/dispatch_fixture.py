@@ -95,6 +95,8 @@ def dispatch_pe(**options):
     if options.get('custom_code') is not None:
         type_specs = [(name, ns, flags, base, field, method + (method >= 7))
                       for name, ns, flags, base, field, method in type_specs]
+    if options.get('custom_struct'):
+        type_specs.append(('OriginalDefault', 'Fixture', options.get('struct_flags', 0x109), 29, 13, 9))
     fields = []
     specs = [('Count', b'\x06\x08', 0x16), ('Factory', b'\x06\x12\x10', 0x16)]
     specs += [(name, b'\x06\x1d\x02', 0x16) for name in ('IsFood', 'Deprecated', 'IsDrill', 'IsChainsaw')]
@@ -103,6 +105,8 @@ def dispatch_pe(**options):
     if pooled: specs += [('_boolBufferCache', b'\x06'+queue, 1), ('_queueLock', b'\x06\x1c', 1)]
     specs += [('type', b'\x06\x08', 6)]
     specs += [('OriginalBytes' + str(n), b'\x06\x11' + bytes(((7 + n) << 2,)), 0x111) for n in range(4)]
+    if options.get('custom_struct'):
+        specs += [('First', b'\x06\x08', 6), ('Second', b'\x06\x06', 6)]
     for n, (name, sig, flags) in enumerate(specs, 1):
         fields.append(struct.pack('<HHH', options.get('field_flags', {}).get(n, flags), text(options.get('field_names', {}).get(n, name)),
                                   blob(options.get('field_signatures', {}).get(n, sig))))
@@ -147,6 +151,11 @@ def dispatch_pe(**options):
         rows[10].append(struct.pack('<HHH', len(refs) << 3 | 1, text('.ctor'), blob(b'\x20\x01\x01\x0e')))
         rows[42] = [struct.pack('<HHHH', *options.get('custom_generic', (0, 0, 7 << 1 | 1)), text('T'))]
         rows[43] = [struct.pack('<HH', options.get('custom_spec_method', 7 << 1), blob(options.get('custom_spec', b'\x0a\x01\x08')))]
+    if options.get('custom_struct'):
+        sets_local = len(rows[17]) + 1
+        rows[17].append(struct.pack('<H', blob(b'\x07\x01\x11\x2c')))
+    if options.get('custom_struct_attribute'):
+        rows[12] = [struct.pack('<HHH', 11 << 5 | 3, 1 << 3 | 3, blob(b'\x01\x00\x00\x00'))]
     if options.get('field_layout'):
         rows[16] = [struct.pack('<IH', offset, field) for offset, field in options['field_layout']]
     if options.get('reject_zero'):
@@ -168,7 +177,7 @@ def dispatch_pe(**options):
     meta = metadata(); start=(0x300+len(meta)+3)&~3; bodies=bytearray()
     for n,code in enumerate(codes):
         methods[n][0] = 0x2000+start+len(bodies)-0x200
-        bodies.extend(struct.pack('<HHII', options.get('header_flags', {}).get(n+1,0x301b if pooled and n==5 else 0x3013),16,len(code),0x11000000 | custom_local if n == 6 and options.get('custom_code') is not None else 0x11000001 if n==4 else 0x11000002 if pooled and n==5 else 0)+code)
+        bodies.extend(struct.pack('<HHII', options.get('header_flags', {}).get(n+1,0x301b if pooled and n==5 else 0x3013),16,len(code),0x11000000 | sets_local if n == 1 and options.get('custom_struct') else 0x11000000 | custom_local if n == 6 and options.get('custom_code') is not None else 0x11000001 if n==4 else 0x11000002 if pooled and n==5 else 0)+code)
         bodies.extend(b'\0'*((-len(bodies))%4))
         if pooled and n==5: bodies.extend(getter_eh)
     data_start=start+len(bodies);cursor=data_start
