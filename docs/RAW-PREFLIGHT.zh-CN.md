@@ -53,3 +53,7 @@
 `SEALED` 仅表示当前证据与私有封存一致，不代表同版本配对、完整提取、可信发布权或签名。候选 `reviewable`、`publishable`、`extractionComplete` 均固定为 false；真实发布接口仍拒绝所有发布。源版本审核仍需操作者独立登记实际 ZIP SHA-256，Git 提交/目录名不能替代该哈希。
 
 阶段统计在没有 Unix resource 模块的平台仍可导入。进程 CPU 使用实际 process_time；无法获取的子进程 CPU/RSS 保留 null，不能解释成零占用或性能验收通过。
+
+## 独立操作者同安装声明的字节绑定
+
+对于已经明确确认来源的固定客户端 EXE、Images 和 Fonts，可用[离线来源绑定工具](OPERATOR-SOURCE-BINDING.zh-CN.md)核对实际 Git 树、LFS 指针与物化载荷，再测量生成 ZIP 的 SHA-256。该工具只产生审核材料与精确角色 pin，不从上传内容登记信任、不修改在线策略、不跳过双来源或完整语义门禁。Sounds 等排除项继续明确记录，不能扩大为全资源认证。
