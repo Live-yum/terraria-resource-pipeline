@@ -211,7 +211,12 @@ class RawEvidenceProducer:
                 for family, pattern in FAMILIES.items():
                     match = re.fullmatch(pattern, stem)
                     if match:
+                        parents = Path(row['input']).parent.parts
+                        texture_role = ('BASE_TEXTURE_LAYOUT' if parents and parents[-1] == 'Images'
+                                        else 'AUXILIARY_TEXTURE_LAYOUT' if 'Images' in parents
+                                        else 'UNLOCATED_NAME_MATCH')
                         images[family].append({'sourceRole': role, 'ids': [int(x) for x in match.groups()],
+                            'textureRole': texture_role,
                             'sourceSha256': row['sourceSha256'], 'pngSha256': row['sha256'],
                             'width': row['width'], 'height': row['height'], 'surfaceFormat': row.get('surfaceFormat'),
                             'inputPath': row['input'], 'outputPath': row['output']})
@@ -222,10 +227,15 @@ class RawEvidenceProducer:
         for family, missing_rules in REQUIRED_SEMANTICS.items():
             checkpoint()
             rows = images.get(family, [])
-            picture_ids = {row['ids'][0] for row in rows}
+            base_rows = [row for row in rows if row['textureRole'] == 'BASE_TEXTURE_LAYOUT']
+            picture_ids = {row['ids'][0] for row in base_rows}
             ids = id_sets.get(family, set())
             coverage[family] = {'status': 'PARTIAL' if ids or rows else 'UNSUPPORTED',
                 'constantIds': len(ids), 'decodedImages': len(rows),
+                'decodedBaseImages': len(base_rows),
+                'decodedAuxiliaryImages': sum(row['textureRole'] == 'AUXILIARY_TEXTURE_LAYOUT' for row in rows),
+                'unlocatedNameMatches': sum(row['textureRole'] == 'UNLOCATED_NAME_MATCH' for row in rows),
+                'baseTextureLocationPolicy': 'direct child of an exact Images directory; layout evidence only',
                 'idsWithoutDirectImage': sorted(ids - picture_ids),
                 'missingRules': missing_rules, 'complete': False}
             coverage[family]['localizedSubcapabilities']=[{'sourceSha256':mapping['sourceSha256'],
