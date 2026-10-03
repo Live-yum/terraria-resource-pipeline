@@ -37,6 +37,8 @@ def assemble(pattern, *, offsets_result=False):
 
 
 def dispatch_pe(**options):
+    if options.get('custom_code') is not None and (options.get('pooled') or options.get('reject_zero')):
+        raise ValueError('Custom fixture supports only the nonpooled, unguarded constructor')
     strings = bytearray(b'\0'); blobs = bytearray(b'\0')
     def text(value):
         n = len(strings); strings.extend(value.encode() + b'\0'); return n
@@ -84,10 +86,15 @@ def dispatch_pe(**options):
     consumer += b'\x2a'
     codes = [count_code, options.get('sets_code', sets), constructor, options.get('wrapper', wrapper),
              options.get('factory', bool_code), options.get('getter', getter), options.get('consumer', consumer)]
+    if options.get('custom_code') is not None:
+        codes.insert(6, options['custom_code'])
     type_specs = [('<Module>', '', 0, 0, 1, 1), ('ItemID', 'Terraria.ID', 1, 5, 1, 1),
                   ('Sets', '', 2, 5, 2, 2), ('SetFactory', 'Terraria.ID', 1, 5, 7, 3),
                   ('Item', 'Terraria', 1, 5, 8 + shift, 7), ('OriginalPayloads', 'Fixture', 0x180, 5, 9 + shift, 8)]
     type_specs += [('OriginalBlock' + str(n), 'Fixture', 0x110, 29, 13 + shift, 8) for n in range(4)]
+    if options.get('custom_code') is not None:
+        type_specs = [(name, ns, flags, base, field, method + (method >= 7))
+                      for name, ns, flags, base, field, method in type_specs]
     fields = []
     specs = [('Count', b'\x06\x08', 0x16), ('Factory', b'\x06\x12\x10', 0x16)]
     specs += [(name, b'\x06\x1d\x02', 0x16) for name in ('IsFood', 'Deprecated', 'IsDrill', 'IsChainsaw')]
@@ -102,6 +109,9 @@ def dispatch_pe(**options):
     names = ['.cctor', '.cctor', '.ctor', 'CreateBoolSet', 'CreateBoolSet', 'GetBoolBuffer', 'SetDefaults']
     signatures = [b'\x00\x00\x01',b'\x00\x00\x01',b'\x20\x01\x01\x08',b'\x20\x01\x1d\x02\x1d\x08',
                   b'\x20\x02\x1d\x02\x02\x1d\x08',b'\x20\x00\x1d\x02',b'\x20\x01\x01\x08']
+    if options.get('custom_code') is not None:
+        names.insert(6, 'CreateCustomSet')
+        signatures.insert(6, b'\x30\x01\x02\x1d\x1e\x00\x1e\x00\x1d\x1c')
     methods = [[0, 0, 0x1891 if n < 2 else 0x1886 if n == 2 else 0x86,
                 text(name), blob(options.get('signatures', {}).get(n + 1, signatures[n])), 1] for n, name in enumerate(names)]
     refs = ['Object', 'Int32', 'Boolean', 'Array', 'RuntimeFieldHandle', 'RuntimeHelpers', 'ValueType']
@@ -128,6 +138,15 @@ def dispatch_pe(**options):
                      struct.pack('<HHH', 12, text('get_Count'), blob(b'\x20\x00\x08')),
                      struct.pack('<HHH', 12, text(options.get('dequeue_name', 'Dequeue')), blob(b'\x20\x00\x13\x00')),
                      struct.pack('<HHH', 12, text('.ctor'), blob(b'\x20\x00\x01'))]
+    if options.get('custom_code') is not None:
+        custom_local = len(rows[17]) + 1
+        rows[17].append(struct.pack('<H', blob(options.get('custom_locals', b'\x07\x04\x1d\x1e\x00\x08\x08\x1e\x00'))))
+        rows.setdefault(27, []).append(struct.pack('<H', blob(options.get('custom_element', b'\x1e\x00'))))
+        refs.append('Exception')
+        rows[1].append(struct.pack('<HHH', 6, text('Exception'), text('System')))
+        rows[10].append(struct.pack('<HHH', len(refs) << 3 | 1, text('.ctor'), blob(b'\x20\x01\x01\x0e')))
+        rows[42] = [struct.pack('<HHHH', *options.get('custom_generic', (0, 0, 7 << 1 | 1)), text('T'))]
+        rows[43] = [struct.pack('<HH', options.get('custom_spec_method', 7 << 1), blob(options.get('custom_spec', b'\x0a\x01\x08')))]
     if options.get('field_layout'):
         rows[16] = [struct.pack('<IH', offset, field) for offset, field in options['field_layout']]
     if options.get('reject_zero'):
@@ -138,7 +157,7 @@ def dispatch_pe(**options):
         tables += b''.join(struct.pack('<I',len(rows[k])) for k in sorted(rows))
         tables += b''.join(b''.join(rows[k]) for k in sorted(rows))
         streams = {'#~':tables,'#Strings':bytes(strings),'#Blob':bytes(blobs),'#GUID':bytes(16)}
-        if options.get('reject_zero'): streams['#US'] = b'\0\x03x\0\0'
+        if options.get('reject_zero') or options.get('custom_code') is not None: streams['#US'] = b'\0\x03x\0\0'
         root = bytearray(struct.pack('<IHHII',0x424a5342,1,1,0,12)+b'v4.0.30319\0\0'+struct.pack('<HH',0,len(streams)))
         offset = len(root)+sum(8+((len(name)+4)&~3) for name in streams)
         for name,data in streams.items():
@@ -149,7 +168,7 @@ def dispatch_pe(**options):
     meta = metadata(); start=(0x300+len(meta)+3)&~3; bodies=bytearray()
     for n,code in enumerate(codes):
         methods[n][0] = 0x2000+start+len(bodies)-0x200
-        bodies.extend(struct.pack('<HHII', options.get('header_flags', {}).get(n+1,0x301b if pooled and n==5 else 0x3013),16,len(code),0x11000001 if n==4 else 0x11000002 if pooled and n==5 else 0)+code)
+        bodies.extend(struct.pack('<HHII', options.get('header_flags', {}).get(n+1,0x301b if pooled and n==5 else 0x3013),16,len(code),0x11000000 | custom_local if n == 6 and options.get('custom_code') is not None else 0x11000001 if n==4 else 0x11000002 if pooled and n==5 else 0)+code)
         bodies.extend(b'\0'*((-len(bodies))%4))
         if pooled and n==5: bodies.extend(getter_eh)
     data_start=start+len(bodies);cursor=data_start

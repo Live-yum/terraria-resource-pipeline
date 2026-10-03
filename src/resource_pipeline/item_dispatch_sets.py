@@ -215,6 +215,19 @@ def _extract(p, evidence):
                        'wholeInitializerProven': False}
     evidence.charge(constructor)
     factory_evidence['freshConstructor'] = constructor
+    # Empty custom pairs bypass the unmodeled reflection/conversion region.
+    # This remains a conditional effect plus local argument slice, not a pool
+    # lifecycle proof, and does not remove any whole-initializer residual call.
+    from .set_factory_empty_custom import prove_empty_custom_set, _empty_calls
+    try:
+        custom = prove_empty_custom_set(p)
+        custom['emptyArgumentCalls'] = _empty_calls(p, custom)
+    except ILUnsupported as exc:
+        if 'LIMIT' in exc.code:
+            raise
+        custom = {'status': exc.code, 'wholeInitializerProven': False}
+    evidence.charge(custom)
+    factory_evidence['emptyCustomSet'] = custom
     recipes = []
     accepted_calls = {wrapper['token'], factory['token']}
     for name, field in fields.items():
