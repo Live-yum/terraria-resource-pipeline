@@ -19,3 +19,24 @@
 
 新版纹理预检支持完整解压长度之后精确五零字节的 XNA 终止标记；非零尾部及额外尾字节仍拒绝。
 失败仅暴露白名单阶段、异常类型和退出码，不输出源字节或私有路径。
+
+## 客户端静态元数据
+
+生产器分别枚举服务端目录的 `TerrariaServer.exe` 与客户端目录的 `Terraria.exe`
+（包含 `Content/Terraria.exe`）。每种至多四个程序集；读取前核对实际 SHA-256，
+客户端同时核对字节数，结束时重验全部源目录。Git LFS 指针不是 PE，不能替代实际文件。
+程序集与证据输出均有大小限制，只读取字节，从不加载或执行游戏程序集。
+
+`clientMetadata` 指向私有 `client-N.json`，包括 `sourceRole=client`、实际输入哈希/大小、
+CLI Assembly 版本和文件偏移、ID 常量及逐资源原始本地化文档。保留资源哈希、偏移和
+属性序号，不重复膨胀每个字符串的投影。客户端不调用服务端 Item 默认值、研究模型或
+本地化加载器规则；原始文档的诊断投影不代表运行时回退、复制或插值行为已验证。
+
+`serverClientComparisons` 比较程序集声明版本、ID 数值集合（不含 Count）和同名语言资源
+哈希，始终为 `INFORMATIONAL_ONLY` / `trusted=false`。声明版本不一致新增
+`SERVER_CLIENT_DECLARED_VERSION_MISMATCH` 阻塞；一致也不能认证来源、平台或安装目录。
+客户端证据不会被合并进服务端的语义覆盖计数。
+
+没有新建上传来源声明或可信 Git/LFS 固定值。原有操作员归档 SHA-256 固定值预检、
+双源校验和组合包纹理来源门禁不变；即使同版本，作业仍 BLOCKED、complete=false、
+不可审核发布。客户端 EXE、资源和私有原始证据不得提交到代码仓库或 CI artifact。

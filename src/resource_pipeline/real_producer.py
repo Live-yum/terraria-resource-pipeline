@@ -9,8 +9,9 @@ import re
 
 from .adapters import AdapterLimits, file_digest, tree_inventory
 from .contracts import package_file
+from .client_metadata import extract_client_metadata, compare_metadata
 from .security import PipelineError, atomic_write, canonical_json, relative_path, sha256
-from .static_il import bounded_evidence_json
+from .static_il import bounded_evidence_json, json_evidence_size
 from .locale_mapping import extract_locale_mapping
 from . import research_semantics
 
@@ -195,6 +196,35 @@ class RawEvidenceProducer:
                 'channels':{name:{key:value for key,value in channel.items() if key not in ('records','unattemptedIds')}
                             for name,channel in mapping['channels'].items()}})
             assemblies.append({'sha256': digest, 'evidence': evidence, 'path': f'server-{index}.json'})
+        clients, rejected_clients = [], []
+        client_executables = [row for row in inventories.get('client', [])
+                              if Path(row['path']).name == 'Terraria.exe']
+        if len(client_executables) > 4:
+            raise PipelineError('Ambiguous client executable inventory')
+        for index, source_row in enumerate(client_executables):
+            checkpoint()
+            path = package_file(sources['client'], source_row['path'])
+            digest = file_digest(path, checkpoint=checkpoint)
+            if digest != source_row['sha256'] or path.stat().st_size != source_row['bytes']:
+                raise PipelineError('Client static metadata source differs from verified inventory')
+            try:
+                evidence = extract_client_metadata(path, checkpoint=checkpoint)
+            except PipelineError:
+                checkpoint()
+                rejected_clients.append({'sourceRole': 'client', 'sha256': digest,
+                    'inputPath': source_row['path'], 'code': 'STATIC_METADATA_REJECTED'})
+                continue
+            if evidence.get('input') != {'sha256': digest, 'bytes': source_row['bytes']}:
+                raise PipelineError('Client static metadata source changed')
+            encoded = bounded_evidence_json(evidence, 64 * 1024 * 1024, checkpoint)
+            evidence_path = f'client-{index}.json'
+            atomic_write(output / evidence_path, encoded)
+            clients.append({'sourceRole': 'client', 'sha256': digest, 'bytes': source_row['bytes'],
+                'inputPath': source_row['path'], 'path': evidence_path,
+                'evidenceSha256': sha256(encoded), 'evidence': evidence})
+        comparisons = [compare_metadata(server['evidence'], client['evidence'], checkpoint)
+                       for server in assemblies for client in clients]
+        json_evidence_size(comparisons, 16 * 1024 * 1024, checkpoint)
         id_sets = {}
         for assembly in assemblies:
             for family, value in assembly['evidence'].get('idFamilies', {}).items():
@@ -257,11 +287,18 @@ class RawEvidenceProducer:
             'publishable': False, 'inputBinding': bindings,
             'serverMetadata': [{k: v for k, v in item.items() if k != 'evidence'} for item in assemblies],
             'rejectedServerMetadata': rejected, 'familyCoverage': coverage,
+            'clientMetadata': [{k: v for k, v in item.items() if k != 'evidence'} for item in clients],
+            'rejectedClientMetadata': rejected_clients, 'serverClientComparisons': comparisons,
             'localeMappingEvidence':mappings,
             'researchEvidence': research,
             'unclassifiedDecodedImages': unclassified,
             'versionEvidence': [item['evidence'].get('gameVersionEvidence') for item in assemblies],
+            'clientVersionEvidence': [item['evidence']['gameVersionEvidence'] for item in clients],
             'blockers': ['GAME_VERSION_AND_FULL_SEMANTICS_NOT_VERIFIED']}
+        if any(not row['declaredVersionsMatch'] for row in comparisons):
+            manifest['blockers'].append('SERVER_CLIENT_DECLARED_VERSION_MISMATCH')
+        if rejected_clients:
+            manifest['blockers'].append('CLIENT_STATIC_METADATA_REJECTED')
         for role, root in sources.items():
             if tree_inventory(root, checkpoint=checkpoint) != inventories[role]:
                 raise PipelineError('Original source changed during semantic extraction')

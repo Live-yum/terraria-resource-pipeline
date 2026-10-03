@@ -407,6 +407,8 @@ def _constant(meta: _Metadata, kind: int, blob_index: int):
             raise PipelineError('Constant blob has invalid integer width')
         return struct.unpack('<' + code, payload)[0], typename, offset, len(payload)
     if kind == 14:
+        if len(payload) > meta.limits.string_bytes * 2:
+            raise PipelineError('Constant string exceeds decoded character limit')
         if len(payload) & 1:
             raise PipelineError('Constant string has invalid UTF-16 width')
         return payload.decode('utf-16-le', errors='strict'), 'string', offset, len(payload)
@@ -428,6 +430,7 @@ def _id_constants(meta: _Metadata, types: dict) -> tuple[dict, dict, list, list]
                 raise PipelineError('Duplicate constant for field')
             constants[field] = (kind, value, offset, rid)
     ids, evidence, unsupported, versions = {}, {}, [], []
+    version_names = set()
     for type_rid, typedef in types.items():
         full_name = typedef['fullName']
         is_id = full_name.startswith('Terraria.ID.')
@@ -438,8 +441,12 @@ def _id_constants(meta: _Metadata, types: dict) -> tuple[dict, dict, list, list]
         for field_rid in range(typedef['firstField'], typedef['lastField']):
             (flags, name_idx, signature_idx), field_offset = meta.row(4, field_rid)
             name = meta.string(name_idx)
-            if is_version and name not in ('versionNumber', 'versionNumber2', 'curRelease'):
-                continue
+            if is_version:
+                if name not in ('versionNumber', 'versionNumber2', 'curRelease'):
+                    continue
+                if name in version_names:
+                    raise PipelineError('Duplicate known version field')
+                version_names.add(name)
             base = {'type': full_name, 'field': name, 'fieldToken': f'0x{0x04000000 | field_rid:08x}',
                     'fieldMetadataOffset': field_offset, 'typeMetadataOffset': typedef['metadataOffset']}
             if flags & 0x50 != 0x50 or field_rid not in constants:
@@ -817,6 +824,34 @@ def _item_evidence(meta, types, selected_ids, selection, limits, checkpoint, inp
     return stages, baseline, accounting
 
 
+def read_assembly_bytes(input_path: Path, limits: SemanticLimits, checkpoint) -> bytes:
+    """Read a bounded stable regular file as data, shared by client and server."""
+    path = Path(input_path)
+    if any(part.is_symlink() for part in (path, *path.parents)):
+        raise PipelineError('Assembly input cannot traverse symlinks')
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+    with os.fdopen(descriptor, 'rb') as source:
+        before = os.fstat(source.fileno())
+        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= limits.input_bytes:
+            raise PipelineError('Assembly input must be a bounded regular file')
+        chunks = []
+        read_bytes = 0
+        while True:
+            checkpoint()
+            chunk = source.read(min(1024 * 1024, limits.input_bytes - read_bytes + 1))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            read_bytes += len(chunk)
+            if read_bytes > limits.input_bytes:
+                raise PipelineError('Assembly input grew past its byte limit')
+        data = b''.join(chunks)
+        after = os.fstat(source.fileno())
+    if len(data) != before.st_size or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+        raise PipelineError('Assembly input changed during static inspection')
+    return data
+
+
 def extract_server_semantics(input_path: Path, limits: SemanticLimits = SemanticLimits(), checkpoint=None,
                              item_stage_ids=None, il_limits: StaticILLimits = StaticILLimits(),
                              requested_locales=None) -> dict:
@@ -834,29 +869,7 @@ def extract_server_semantics(input_path: Path, limits: SemanticLimits = Semantic
                        for value in requested_locales)):
             raise PipelineError('Invalid requested localization cultures')
         selected_locales = frozenset((*requested_locales, 'en-US'))
-    path = Path(input_path)
-    if any(part.is_symlink() for part in (path, *path.parents)):
-        raise PipelineError('Server input cannot traverse symlinks')
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
-    with os.fdopen(descriptor, 'rb') as source:
-        before = os.fstat(source.fileno())
-        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= limits.input_bytes:
-            raise PipelineError('Server input must be a bounded regular file')
-        chunks = []
-        read_bytes = 0
-        while True:
-            checkpoint()
-            chunk = source.read(min(1024 * 1024, limits.input_bytes - read_bytes + 1))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            read_bytes += len(chunk)
-            if read_bytes > limits.input_bytes:
-                raise PipelineError('Server input grew past its byte limit')
-        data = b''.join(chunks)
-        after = os.fstat(source.fileno())
-    if len(data) != before.st_size or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
-        raise PipelineError('Server input changed during static inspection')
+    data = read_assembly_bytes(input_path, limits, checkpoint)
     try:
         meta = _Metadata(data, limits, checkpoint=checkpoint)
         if meta.rows[32] != 1:

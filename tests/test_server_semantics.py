@@ -17,7 +17,7 @@ from resource_pipeline.server_semantics import SemanticLimits, _Metadata, _langu
 from resource_pipeline.locale_semantics import embedded_baselines, locale_copy_passes, reconstruct_raw_locale, resolve_locale_source
 
 
-def synthetic_pe(*, resources=None, pe64=False, bad_signature=False, repeated_types=0, repeated_name='RepeatedFixture'):
+def synthetic_pe(*, resources=None, pe64=False, bad_signature=False, repeated_types=0, repeated_name='RepeatedFixture', version_fields=None):
     strings = bytearray(b'\0')
     blobs = bytearray(b'\0')
     def string(value):
@@ -45,7 +45,8 @@ def synthetic_pe(*, resources=None, pe64=False, bad_signature=False, repeated_ty
                 payload = value.encode('utf-16-le') if kind == 14 else struct.pack({4:'<b',5:'<B',6:'<h',7:'<H',8:'<i',9:'<I',10:'<q',11:'<Q'}[kind], value)
                 constants.append(struct.pack('<HHH', kind, len(fields) << 2, blob(payload)))
     typedef('', '<Module>', [])
-    typedef('Terraria', 'Main', [('versionNumber', 14, '2.3.4.5'), ('curRelease', 8, 999)])
+    typedef('Terraria', 'Main', version_fields if version_fields is not None else
+            [('versionNumber', 14, '2.3.4.5'), ('curRelease', 8, 999)])
     typedef('Terraria.ID', 'ItemID', [('Empty',8,0),('Example',8,1),('Alias',8,1),('Count',8,2),('Dynamic',None,None),('Label',14,'synthetic')])
     typedef('Terraria.ID', 'ArmorIDs', [])
     typedef('', 'Head', [('ExampleHat',5,15)])
