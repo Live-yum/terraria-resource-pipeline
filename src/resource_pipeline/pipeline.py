@@ -41,6 +41,10 @@ class Pipeline:
         self.checkout = self.root / "cdn-checkout"
         if not self.remote.exists():
             self.git(["init", "--bare", "--initial-branch=main", str(self.remote)])
+        # A local push starts a separate receive-pack whose repository config
+        # does not inherit the sender's -c options. Disable its automatic
+        # maintenance too, including when reopening an existing owned store.
+        self.git(["--git-dir", str(self.remote), "config", "receive.autogc", "false"])
         if not self.checkout.exists():
             self.git(["clone", str(self.remote), str(self.checkout)])
             self.git(["config", "user.name", "Resource pipeline demo"], self.checkout)
