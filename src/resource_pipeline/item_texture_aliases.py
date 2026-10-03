@@ -252,7 +252,8 @@ class _Program:
     def member(self, token, owner, name, signature):
         _require(token >> 24 == 10, 'ALIAS_EXPECTED_MEMBERREF')
         row, _ = self.row(10, token & 0xffffff)
-        _require(row[0] & 7 == 1, 'ALIAS_MEMBER_OWNER_MISMATCH')
+        _require(row[0] & 7 == 1 and 0 < row[0] >> 3 <= min(self.meta.rows[1], 0xffffff),
+                 'ALIAS_MEMBER_OWNER_MISMATCH')
         self.external_type(0x01000000 | row[0] >> 3, owner)
         sig, _ = self.meta.blob(row[2])
         _require(self.meta.string(row[1]) == name and sig == signature, 'ALIAS_MEMBER_SIGNATURE_MISMATCH')

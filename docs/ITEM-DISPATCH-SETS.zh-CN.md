@@ -21,7 +21,7 @@
 ## 条件与阻塞
 
 成功状态是 `PROVEN_CONDITIONAL_INITIALIZER_RECIPES`，每个集合是 `PROVEN_INITIALIZER_RECIPE`。
-这证明对应调用正常返回时的数组填充规则及其字面量输入。要在声明域内使用它，仍须证明返回 bool 缓冲区足够长；返回长度、Factory 构造/缓存状态和整个初始化器的残余调用副作用不在此模块的闭合证明内。
+这证明对应调用正常返回时的数组填充规则及其字面量输入。要在声明域内使用它，仍须证明返回 bool 缓冲区足够长；返回长度、后续 Factory 缓存状态和整个初始化器的残余调用副作用不在此模块的闭合证明内。`factory.freshConstructor` 可独立证明新实例构造正常返回时的状态，详见 [构造器证明](SET-FACTORY-CONSTRUCTOR.zh-CN.md)，不能外推为随后集合调用的缓存状态。
 
 `residualEffects.unmodeledCalls` 逐个记录未建模的 Count/Sets/Factory 构造调用，含 caller/target token、首个 IL 偏移及次数。这些调用一律标为 `UNSUPPORTED_EFFECT_SUMMARY`。它们不会因为在别处、没有直接写目标字段、或名字看似无害而被视作纯函数。
 

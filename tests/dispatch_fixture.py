@@ -59,6 +59,12 @@ def dispatch_pe(**options):
         sets += tok(0x6f, 0x06000005 if explicit is not None else 0x06000004) + tok(0x80, 0x04000003 + n)
     sets += options.get('sets_tail', b'') + b'\x2a'
     constructor = b'\x02' + tok(0x28, 0x0a000001) + b'\x02\x03' + tok(0x7d, 0x04000007) + b'\x2a'
+    if pooled and options.get('fresh_constructor'):
+        constructor = (b'\x02' + tok(0x73, 0x0a000007) + tok(0x7d, 0x04000008)
+                       + b'\x02' + tok(0x73, 0x0a000001) + tok(0x7d, 0x04000009) + constructor)
+    if options.get('reject_zero'):
+        constructor = constructor[:-8] + b'\x03\x2d\x0b' + tok(0x72, 0x70000001) + tok(0x73, 0x0a000008 if pooled else 0x0a000003) + b'\x7a' + constructor[-8:]
+    constructor = options.get('constructor', lambda code: code)(constructor)
     wrapper = b'\x02\x16\x03' + tok(0x28, 0x06000005) + b'\x2a'
     bool_code = assemble([2,(0x28,0x06000006),0x0a,0x16,0x0b,(0x2b,'@14'),
         6,7,3,0x9c,7,0x17,0x58,0x0b,7,6,0x8e,0x69,(0x32,'@6'),
@@ -86,12 +92,12 @@ def dispatch_pe(**options):
     specs = [('Count', b'\x06\x08', 0x16), ('Factory', b'\x06\x12\x10', 0x16)]
     specs += [(name, b'\x06\x1d\x02', 0x16) for name in ('IsFood', 'Deprecated', 'IsDrill', 'IsChainsaw')]
     specs += [('_size', b'\x06\x08', 1)]
-    queue = b'\x15\x12\x21\x01\x1d\x02'
+    queue = options.get('queue_signature', b'\x15\x12\x21\x01\x1d' + bytes((options.get('queue_element', 2),)))
     if pooled: specs += [('_boolBufferCache', b'\x06'+queue, 1), ('_queueLock', b'\x06\x1c', 1)]
     specs += [('type', b'\x06\x08', 6)]
     specs += [('OriginalBytes' + str(n), b'\x06\x11' + bytes(((7 + n) << 2,)), 0x111) for n in range(4)]
     for n, (name, sig, flags) in enumerate(specs, 1):
-        fields.append(struct.pack('<HHH', options.get('field_flags', {}).get(n, flags), text(name),
+        fields.append(struct.pack('<HHH', options.get('field_flags', {}).get(n, flags), text(options.get('field_names', {}).get(n, name)),
                                   blob(options.get('field_signatures', {}).get(n, sig))))
     names = ['.cctor', '.cctor', '.ctor', 'CreateBoolSet', 'CreateBoolSet', 'GetBoolBuffer', 'SetDefaults']
     signatures = [b'\x00\x00\x01',b'\x00\x00\x01',b'\x20\x01\x01\x08',b'\x20\x01\x1d\x02\x1d\x08',
@@ -100,6 +106,7 @@ def dispatch_pe(**options):
                 text(name), blob(options.get('signatures', {}).get(n + 1, signatures[n])), 1] for n, name in enumerate(names)]
     refs = ['Object', 'Int32', 'Boolean', 'Array', 'RuntimeFieldHandle', 'RuntimeHelpers', 'ValueType']
     if pooled: refs += ['Queue`1', 'Monitor']
+    if options.get('reject_zero'): refs += ['ArgumentOutOfRangeException']
     rows = {0: [struct.pack('<HHHHH', 0, text('OriginalDispatch.dll'), 1, 0, 0)],
         1: [struct.pack('<HHH',6,text(name),text('System.Runtime.CompilerServices' if name == 'RuntimeHelpers' else 'System.Collections.Generic' if name == 'Queue`1' else 'System.Threading' if name == 'Monitor' else 'System')) for name in refs],
         2: [struct.pack('<IHHHHH',options.get('type_flags',{}).get(i,flags),text(name),text(ns),base,field,method)
@@ -119,14 +126,20 @@ def dispatch_pe(**options):
         rows[10] += [struct.pack('<HHH', 73, text('Enter'), blob(b'\x00\x02\x01\x1c\x10\x02')),
                      struct.pack('<HHH', 73, text('Exit'), blob(b'\x00\x01\x01\x1c')),
                      struct.pack('<HHH', 12, text('get_Count'), blob(b'\x20\x00\x08')),
-                     struct.pack('<HHH', 12, text(options.get('dequeue_name', 'Dequeue')), blob(b'\x20\x00\x13\x00'))]
+                     struct.pack('<HHH', 12, text(options.get('dequeue_name', 'Dequeue')), blob(b'\x20\x00\x13\x00')),
+                     struct.pack('<HHH', 12, text('.ctor'), blob(b'\x20\x00\x01'))]
+    if options.get('field_layout'):
+        rows[16] = [struct.pack('<IH', offset, field) for offset, field in options['field_layout']]
+    if options.get('reject_zero'):
+        rows[10].append(struct.pack('<HHH', len(refs) << 3 | 1, text('.ctor'), blob(b'\x20\x01\x01\x0e')))
     def metadata():
         rows[6] = [struct.pack('<IHHHHH',*row) for row in methods]
         tables = struct.pack('<IBBBBQQ',0,2,0,0,1,sum(1<<key for key in rows),0)
         tables += b''.join(struct.pack('<I',len(rows[k])) for k in sorted(rows))
         tables += b''.join(b''.join(rows[k]) for k in sorted(rows))
         streams = {'#~':tables,'#Strings':bytes(strings),'#Blob':bytes(blobs),'#GUID':bytes(16)}
-        root = bytearray(struct.pack('<IHHII',0x424a5342,1,1,0,12)+b'v4.0.30319\0\0'+struct.pack('<HH',0,4))
+        if options.get('reject_zero'): streams['#US'] = b'\0\x03x\0\0'
+        root = bytearray(struct.pack('<IHHII',0x424a5342,1,1,0,12)+b'v4.0.30319\0\0'+struct.pack('<HH',0,len(streams)))
         offset = len(root)+sum(8+((len(name)+4)&~3) for name in streams)
         for name,data in streams.items():
             root.extend(struct.pack('<II',offset,len(data)));raw=name.encode()+b'\0'

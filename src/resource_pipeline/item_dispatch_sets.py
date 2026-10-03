@@ -202,6 +202,19 @@ def _extract(p, evidence):
     _require(ctor['token'] == head['ctor'], 'DISPATCH_FACTORY_CONSTRUCTOR_MISMATCH')
     _linear_store(cctor, factory_field, 2)
     wrapper, factory, getter, factory_evidence = _bool_factory(p)
+    # Constructor closure is a separate theorem, never a later-call pool-state
+    # assumption. Preserve the existing conditional recipes on unsupported ctor
+    # shapes, but never swallow a shared budget limit or cancellation.
+    from .set_factory_constructor import prove_set_factory_constructor
+    try:
+        constructor = prove_set_factory_constructor(p)
+    except ILUnsupported as exc:
+        if 'LIMIT' in exc.code:
+            raise
+        constructor = {'status': exc.code, 'cacheStateAtLaterCallProven': False,
+                       'wholeInitializerProven': False}
+    evidence.charge(constructor)
+    factory_evidence['freshConstructor'] = constructor
     recipes = []
     accepted_calls = {wrapper['token'], factory['token']}
     for name, field in fields.items():
@@ -275,7 +288,7 @@ def _extract_item_dispatch_sets(data: bytes, *, limits=ItemDispatchSetLimits(), 
         'assumptions': ['factory call returns normally with a buffer covering the declared domain',
             'literal Count store and fresh Factory binding identify an intended domain, not a proved mutable Count value at every read',
             'InitializeArray and core-library metadata identities are trusted intrinsics, not assembly signature verification',
-            'no constructor/cache freshness, full type-initializer, mutation, client-equivalence or final-default closure is claimed']}
+            'constructor evidence ends at fresh normal return; later cache state, full type-initializer, mutation, client-equivalence and final-default closure remain unproved']}
     p = None
     try:
         evidence.charge(result, extra=2048)
