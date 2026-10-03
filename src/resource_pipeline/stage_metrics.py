@@ -10,11 +10,15 @@ from contextlib import contextmanager
 import math
 import os
 from pathlib import Path
-import resource
 import sys
 import threading
 import time
 from typing import Callable
+
+try:
+    import resource
+except ImportError:  # The resource module is unavailable on Windows.
+    resource = None
 
 STAGES = frozenset({
     "server_verify", "server_unpack", "client_verify", "client_unpack",
@@ -94,6 +98,15 @@ def _linux_memory(proc: Path = Path("/proc"), pid: int | None = None) -> dict:
 
 
 def _usage() -> dict:
+    if resource is None:
+        # process_time measures this process's user + system CPU on Windows as
+        # well as Unix. It does not include children or provide RSS counters.
+        return {
+            "cpuMs": time.process_time() * 1000,
+            "waitedChildrenCpuMs": None,
+            "processLifetimePeakRssBytes": None,
+            "waitedChildrenLifetimePeakRssBytes": None,
+        }
     own = resource.getrusage(resource.RUSAGE_SELF)
     children = resource.getrusage(resource.RUSAGE_CHILDREN)
     # ru_maxrss is bytes on Darwin and KiB on Linux. Unknown OS units are not

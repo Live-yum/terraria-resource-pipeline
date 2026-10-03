@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -5,9 +6,11 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from resource_pipeline import stage_metrics
 from resource_pipeline.stage_metrics import StageMetrics, _linux_memory, MAX_STAGES
 
 
@@ -22,6 +25,57 @@ def memory(rss=1024, tree=2048, complete=True):
 
 
 class StageMetricsTests(unittest.TestCase):
+    def test_missing_resource_import_retains_only_supported_measurements(self):
+        # Load a fresh module: replacing the dependency after an ordinary import
+        # would miss the Windows startup failure this test guards against.
+        spec = importlib.util.spec_from_file_location("metrics_without_resource", stage_metrics.__file__)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"resource": None}), patch.object(sys, "platform", "win32"):
+            spec.loader.exec_module(module)
+            with patch.object(module.time, "process_time", side_effect=[0.010, 0.025, 0.030]):
+                meter = module.StageMetrics()
+                with meter.stage("server_verify"):
+                    pass
+                result = meter.finish()
+        row = result["stages"][0]
+        self.assertEqual(row["status"], "SUCCEEDED")
+        self.assertEqual(row["cpuMs"], 15)
+        self.assertIsNone(row["waitedChildrenCpuMs"])
+        for key in ("rssPeakBytes", "processTreeRssPeakBytes",
+                    "processLifetimePeakRssBytes", "waitedChildrenLifetimePeakRssBytes"):
+            self.assertIsNone(row[key])
+        for key in ("processLifetimePeakRssBytes", "waitedChildrenLifetimePeakRssBytes"):
+            self.assertIsNone(result[key])
+        self.assertFalse(row["processTreeSamplingComplete"])
+        self.assertGreaterEqual(row["sampleErrors"], 2)
+
+    def test_missing_resource_cpu_failure_does_not_break_operation(self):
+        with patch.object(stage_metrics, "resource", None), \
+                patch.object(stage_metrics.time, "process_time", side_effect=OSError("private failure")):
+            meter = StageMetrics(memory_reader=memory)
+            with meter.stage("server_verify"):
+                pass
+            result = meter.finish()
+        row = result["stages"][0]
+        self.assertEqual(row["status"], "SUCCEEDED")
+        self.assertIsNone(row["cpuMs"])
+        self.assertIsNone(row["waitedChildrenCpuMs"])
+        self.assertNotIn("private", json.dumps(result))
+
+    def test_available_resource_preserves_cpu_and_known_rss_units(self):
+        own = SimpleNamespace(ru_utime=1.25, ru_stime=0.5, ru_maxrss=100)
+        children = SimpleNamespace(ru_utime=0.5, ru_stime=0.25, ru_maxrss=200)
+        for platform, factor in (("linux", 1024), ("darwin", 1), ("unknown", None)):
+            with self.subTest(platform=platform):
+                reader = Mock(getrusage=Mock(side_effect=[own, children]))
+                with patch.object(stage_metrics, "resource", reader), \
+                        patch.object(sys, "platform", platform):
+                    result = stage_metrics._usage()
+                self.assertEqual(result["cpuMs"], 1750)
+                self.assertEqual(result["waitedChildrenCpuMs"], 750)
+                self.assertEqual(result["processLifetimePeakRssBytes"], 100 * factor if factor else None)
+                self.assertEqual(result["waitedChildrenLifetimePeakRssBytes"], 200 * factor if factor else None)
+
     def test_stage_peak_is_not_the_lifetime_high_water(self):
         samples = iter([memory(200, 500), memory(100, 300)])
         meter = StageMetrics(memory_reader=lambda: next(samples), usage_reader=usage)

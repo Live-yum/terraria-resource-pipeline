@@ -165,6 +165,8 @@ class RawInputPreflight:
                 shutil.rmtree(directory / f"{role}-texture-job", ignore_errors=True)
             shutil.rmtree(directory / "adapter-evidence", ignore_errors=True)
             job.pop("producerEvidence", None)
+            job.pop("candidate", None)
+            (directory / "sealed-candidate.json").unlink(missing_ok=True)
             code = "RAW_PROCESSING_FAILED" if isinstance(failure, Exception) else "RAW_PROCESSING_INTERRUPTED"
             job.update(state="BLOCKED" if isinstance(failure, Exception) else "INTERRUPTED", textures={},
                        extractionComplete=False, executedInput=False, error=code,
@@ -199,6 +201,8 @@ class RawInputPreflight:
                 shutil.rmtree(directory / f"{role}-texture-job", ignore_errors=True)
             shutil.rmtree(directory / "adapter-evidence", ignore_errors=True)
             job.pop("producerEvidence", None)
+            job.pop("candidate", None)
+            (directory / "sealed-candidate.json").unlink(missing_ok=True)
             job.update(state="CANCELED" if canceled() else "BLOCKED", textures={},
                        extractionComplete=False, executedInput=False, blockers=[self._block(code, code)], error=code)
             self.pipeline.save(job)
@@ -313,8 +317,17 @@ class RawInputPreflight:
             except PipelineError:
                 blockers.append(self._block("SEMANTIC_PRODUCER_REJECTED", "真实语义生产器拒绝输入，未生成可审核候选"))
         if stopped(): return job
-        job.update(state="BLOCKED", blockers=blockers, extractedBytes=expanded,
+        job.update(blockers=blockers, extractedBytes=expanded,
                    archiveEntries=entries, executedInput=False, extractionComplete=False,
                    error="；".join(blocker["message"] for blocker in blockers))
+        if job.get("producerEvidence"):
+            from .candidate import seal_candidate
+            try:
+                job["candidate"] = seal_candidate(directory, job, checkpoint=checkpoint)
+            except PipelineError:
+                job["blockers"].append(self._block("CANDIDATE_SEAL_REJECTED", "候选证据校验失败，不能审核发布"))
+                job["error"] = "；".join(blocker["message"] for blocker in job["blockers"])
+        if stopped(): return job
+        job["state"] = "BLOCKED"
         self.pipeline.save(job)
         return job

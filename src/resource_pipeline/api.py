@@ -175,9 +175,21 @@ def create_app(root: Path | None = None, synchronous: bool = False, consumer_dem
             raise HTTPException(404, "任务不存在") from None
         if value.get("kind") != "raw-input-preflight":
             raise HTTPException(404, "不是原始双包任务")
+        from .candidate import verify_candidate
+        candidate = verify_candidate(pipeline.root / "jobs" / identity, value)
+        if candidate is not None and candidate["integrityStatus"] == "INVALID":
+            # Invalid persisted bindings must not flow through legacy compactors
+            # or leak malformed records/private diagnostic text.
+            return {"id": identity, "state": "BLOCKED", "reviewable": False, "candidate": candidate,
+                    "reviewDigest": None, "baseRelease": None, "release": None, "diff": None,
+                    "coverage": None, "familyCoverage": {},
+                    "blockers": [{"code": "CANDIDATE_INTEGRITY_INVALID",
+                                  "message": "候选证据已变化，不能审核发布"}]}
         value = compact_raw(value)
         ready = value.get("extractionComplete") is True and value.get("state") == "READY_FOR_REVIEW"
-        return {"id": identity, "state": value["state"], "reviewable": ready,
+        # A sealed partial candidate proves bytes only, never complete extraction.
+        ready = ready and candidate is not None and candidate["integrityStatus"] == "SEALED"
+        return {"id": identity, "state": value["state"], "reviewable": ready, "candidate": candidate,
                 "reviewDigest": value.get("reviewDigest") if ready else None,
                 "baseRelease": value.get("baseRelease"), "release": value.get("release"),
                 "diff": value.get("diff"), "coverage": value.get("coverage"),

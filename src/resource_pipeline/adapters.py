@@ -71,7 +71,9 @@ def tree_inventory(root: Path, limits: AdapterLimits = AdapterLimits(), *,
     entries: list[dict] = []
     total = 0
     seen: set[str] = set()
-    for directory, directories, files in os.walk(root, followlinks=False):
+    def reject_walk_error(_error):
+        raise PipelineError("Adapter tree cannot be completely read")
+    for directory, directories, files in os.walk(root, followlinks=False, onerror=reject_walk_error):
         if checkpoint is not None:
             checkpoint()
         for name in [*directories, *files]:
