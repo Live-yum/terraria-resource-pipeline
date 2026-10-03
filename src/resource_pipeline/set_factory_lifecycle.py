@@ -164,6 +164,7 @@ def prove_factory_lifecycle_prefix(p, constructor, first_custom, bool_methods):
         element = b'\x08' if default['kind'] == 'int32' else b'\x11' + _compressed_bytes((int(default['typeToken'],16)&0xffffff)<<2)
         _store(p, il[at].operand, b'\x06\x1d'+element); at += 1
     records = []; calls = []; summaries = {}; stop = None
+    custom_summary = None
     evidence = EvidenceBudget(p.budget.limits.evidence_bytes, p.budget.check)
     while at < len(il):
         p.budget.check(); ins = il[at]
@@ -173,12 +174,28 @@ def prove_factory_lifecycle_prefix(p, constructor, first_custom, bool_methods):
             if ins.opcode == 0x73:
                 end, newcalls, record = _list_slice(p, il, at)
             elif ins.opcode == 0x7e and ins.operand == factory:
-                end, newcalls, record = _primitive_slice(p, il, at, constructor, bool_methods, summaries)
+                try:
+                    end, newcalls, record = _primitive_slice(p, il, at, constructor, bool_methods, summaries)
+                except ILUnsupported as primitive_error:
+                    if 'LIMIT' in primitive_error.code: raise
+                    from .set_factory_custom_literals import prove_literal_custom_method, literal_custom_slice
+                    if custom_summary is None:
+                        custom_summary = prove_literal_custom_method(p)
+                    end, newcalls, record = literal_custom_slice(p, method, at, constructor, custom_summary)
             elif ins.opcode in (*range(0x15, 0x1f), 0x1f, 0x20):
-                end, values, newcalls, record = _int_array(p, il, at)
+                try:
+                    end, values, newcalls, record = _int_array(p, il, at)
+                    element = 8
+                except ILUnsupported as array_error:
+                    if 'LIMIT' in array_error.code: raise
+                    _require(_constant(ins) == 0, 'LIFECYCLE_EMPTY_BOOL_ARRAY')
+                    _shape(il[at+1:at+3], [(0x8d, 'bool'), (0x80, 'field')])
+                    p.external_type(il[at+1].operand, 'System.Boolean')
+                    end, values, newcalls, element = at+2, [], [], 2
+                    record = {'allocationIlOffset': il[at+1].offset, 'length': 0}
                 _require(end < len(il) and il[end].opcode == 0x80, 'LIFECYCLE_ARRAY_STORE')
-                _store(p, il[end].operand, b'\x06\x1d\x08')
-                record.update(kind='fresh int32 literal array', values=values,
+                _store(p, il[end].operand, bytes((6,0x1d,element)))
+                record.update(kind='fresh '+('int32' if element == 8 else 'bool')+' literal array', values=values,
                               fieldToken=_hex(il[end].operand), storeIlOffset=il[end].offset)
                 end += 1
             else:
