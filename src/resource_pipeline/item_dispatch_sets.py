@@ -237,6 +237,17 @@ def _extract(p, evidence):
         first_custom = {'status': exc.code, 'wholeInitializerProven': False}
     evidence.charge(first_custom)
     factory_evidence['firstCustomCall'] = first_custom
+    from .set_factory_lifecycle import prove_factory_lifecycle_prefix
+    try:
+        lifecycle = prove_factory_lifecycle_prefix(p, constructor, first_custom, (wrapper, factory, getter))
+    except ILUnsupported as exc:
+        if 'LIMIT' in exc.code:
+            raise
+        lifecycle = {'status': exc.code, 'wholeInitializerProven': False}
+    evidence.charge(lifecycle)
+    factory_evidence['lifecyclePrefix'] = lifecycle
+    lifecycle_calls = {(c['callerMethodToken'], c['callIlOffset'], c['targetToken'])
+                       for c in lifecycle.get('dischargedCalls', [])}
     evidence.charge(custom)
     factory_evidence['emptyCustomSet'] = custom
     recipes = []
@@ -283,6 +294,9 @@ def _extract(p, evidence):
                     and _hex(method['token']) == first_custom['callerMethodToken']
                     and ins.offset == first_custom['callIlOffset']
                     and _hex(ins.operand) == first_custom['targetToken']):
+                continue
+            if (ins.opcode in (0x28, 0x6f, 0x73)
+                    and (_hex(method['token']), ins.offset, _hex(ins.operand)) in lifecycle_calls):
                 continue
             if ins.opcode in (0x28,0x6f,0x73) and ins.operand not in accepted_calls:
                 key = (method['token'], ins.operand)

@@ -13,9 +13,12 @@ from resource_pipeline.set_factory_empty_custom import extract_empty_custom_set
 def fixture(*, mutate=lambda b:b, call_length=0, call_type=0x01000001, caller_tail=b'', dead=b'\x02\x28\x07\x00\x00\x06\x26', **opts):
     # The dead region deliberately contains an unknown call. An empty array
     # cannot enter it; nonempty arrays receive no certificate whatsoever.
+    pooled = opts.get('pooled', False)
+    exception_ctor = 0x0a000008 if pooled else 0x0a000003
+    element_spec = 0x1b000002 if pooled else 0x1b000001
     prefix = assemble([4,0x8e,0x69,0x18,0x5d,(0x2c,'@9'),(0x72,0x70000001),
-        (0x73,0x0a000003),0x7a,2,(0x7b,0x04000007),(0x8d,0x1b000001),0x0a,0x16,0x0b,
-        (0x2b,'@24'),6,7,3,(0xa4,0x1b000001),7,0x17,0x58,0x0b,
+        (0x73,exception_ctor),0x7a,2,(0x7b,0x04000007),(0x8d,element_spec),0x0a,0x16,0x0b,
+        (0x2b,'@24'),6,7,3,(0xa4,element_spec),7,0x17,0x58,0x0b,
         7,6,0x8e,0x69,(0x32,'@16'),4])
     dead_start = len(prefix) + 12
     check = dead_start + len(dead)
@@ -96,7 +99,7 @@ class EmptyCustomSetTests(unittest.TestCase):
         self.assertEqual([], r['emptyArgumentCalls'])
         r = extract_empty_custom_set(fixture(custom_spec=b'\x0a\x01\x1e\x00'))
         self.assertFalse(r['emptyArgumentCalls'][0]['genericInstantiationValidityProven'])
-        with self.assertRaises(ValueError): fixture(pooled=True)
+        self.assertEqual('PROVEN_EMPTY_PAIR_NORMAL_RETURN_EFFECTS', extract_empty_custom_set(fixture(pooled=True))['status'])
         with self.assertRaises(ValueError): fixture(reject_zero=True)
 
     def test_budget_cancellation_and_malformed_input_fail_closed(self):

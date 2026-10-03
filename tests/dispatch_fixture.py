@@ -37,8 +37,8 @@ def assemble(pattern, *, offsets_result=False):
 
 
 def dispatch_pe(**options):
-    if options.get('custom_code') is not None and (options.get('pooled') or options.get('reject_zero')):
-        raise ValueError('Custom fixture supports only the nonpooled, unguarded constructor')
+    if options.get('custom_code') is not None and options.get('reject_zero'):
+        raise ValueError('Custom fixture does not support the guarded constructor')
     strings = bytearray(b'\0'); blobs = bytearray(b'\0')
     def text(value):
         n = len(strings); strings.extend(value.encode() + b'\0'); return n
@@ -160,6 +160,16 @@ def dispatch_pe(**options):
         rows[16] = [struct.pack('<IH', offset, field) for offset, field in options['field_layout']]
     if options.get('reject_zero'):
         rows[10].append(struct.pack('<HHH', len(refs) << 3 | 1, text('.ctor'), blob(b'\x20\x01\x01\x0e')))
+    if options.get('lifecycle_list'):
+        list_ref = len(rows[1]) + 1
+        rows[1].append(struct.pack('<HHH', 6, text(options.get('list_type_name', 'List`1')), text('System.Collections.Generic')))
+        from resource_pipeline.item_texture_aliases import _compressed_bytes
+        list_sig = b'\x15\x12' + _compressed_bytes(list_ref << 2 | 1) + bytes((1, options.get('list_element', 8)))
+        rows.setdefault(27, []).append(struct.pack('<H', blob(list_sig)))
+        list_parent = len(rows[27]) << 3 | 4
+        rows[10] += [struct.pack('<HHH', list_parent, text('.ctor'), blob(b'\x20\x00\x01')),
+                     struct.pack('<HHH', list_parent, text(options.get('list_add_name', 'Add')), blob(b'\x20\x01\x01\x13\x00'))]
+        rows[4][2] = struct.pack('<HHH', 0x16, text('IsFood'), blob(b'\x06' + list_sig))
     def metadata():
         rows[6] = [struct.pack('<IHHHHH',*row) for row in methods]
         tables = struct.pack('<IBBBBQQ',0,2,0,0,1,sum(1<<key for key in rows),0)
