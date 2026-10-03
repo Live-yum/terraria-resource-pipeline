@@ -162,7 +162,7 @@ class StageMetricsTests(unittest.TestCase):
         meter = StageMetrics(memory_reader=memory, usage_reader=usage)
         job, saved = {"state": "EXTRACTING"}, []
         with self.assertRaises(ValueError):
-            with meter.persist(job, lambda value: saved.append(dict(value)):
+            with meter.persist(job, lambda value: saved.append(dict(value))):
                 with meter.stage("server_unpack"):
                     raise ValueError("decode rejected")
         self.assertEqual(len(saved), 1)
