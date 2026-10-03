@@ -56,6 +56,16 @@ dotnet run --project tools/AssemblyInspector -- /private/path/TerrariaServer.exe
 
 静态 ID 和语言资源**不等于**运行时物品默认属性、动态 tooltip、地图规则和人物绘制语义。检查结果明确 `complete=false` 并列出尚未覆盖的内容，不能直接用于完整发布。
 
+## 小程序共享材料云数据合同
+
+新增四对象原子组的私有打包和复读校验工具：方块/墙壁/油漆基础层、材质规则、像素 ID 白名单、SRGB 索引共用版本与基础哈希。支持固定清单、完整性校验和客户端跨语言合成向量；不自动发布、不证明真实提取完整。见 [共享材料合同](docs/CONSUMER-RELEASE.zh-CN.md)。
+
+## 完整资源套件审批与统一更新
+
+新增默认关闭的 server-owned consumer control plane：四个必需组（材料、物品、人物、地图标记）全部审核后生成固定来源绑定、不可变 Git pin 的完整套件，再一次更新稳定通道。审批序列递增；回滚也需新审批。上传内容不能指定发布目标或自授审批。
+
+`create_app(..., consumer_demo=True)` 可显式开启网页中的原创合成套件预览/审批/回滚，仅推送本地 bare Git；真实适配与 CDN 权限门禁仍然关闭。可运行 `PYTHONPATH=src python scripts/prove_consumer_release_set.py --output /tmp/new-consumer-proof` 生成跨语言本地验收输入。详见 [完整套件协议与安全边界](docs/consumer-release-set.md)。
+
 ## 接下来必须完成的真实输入适配
 
 - 将已整理的资源消费清单与 110 子项协议绑定到真实版本的 ID、字段和值语义；目前合成校验不能证明真实游戏提取完整

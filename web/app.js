@@ -138,3 +138,23 @@ async function restoreClient(){const epoch=clientEpoch;try{
   if(epoch===clientEpoch){clientManifest=manifest;clientRelease=saved.pointer.release;status('client-status',`已恢复已验证缓存版本 ${manifest.gameVersion}`);}
 }catch(error){if(epoch===clientEpoch)status('client-status','缓存不可用，可重新检查CDN更新',true);}}
 restoreClient();poll();setInterval(poll,2000);
+
+// This review channel can only select server-owned ORIGINAL synthetic fixtures.
+// Uploaded manifests, hashes, source bindings and approved flags are not inputs.
+let consumerReview=null,consumerBusy=false;
+async function previewConsumer(url){
+  if(consumerBusy)return;consumerBusy=true;consumerReview=null;$('consumer-confirm').checked=false;$('consumer-confirm').disabled=true;$('consumer-publish').disabled=true;
+  try{const review=await api(url,{method:'POST'});consumerReview=review;$('consumer-preview').textContent=JSON.stringify(review,null,2);$('consumer-confirm').disabled=false;status('consumer-status','请核对当前完整预览；旧审批不会复用');}
+  catch(error){status('consumer-status',error.message,true);}finally{consumerBusy=false;}
+}
+$('consumer-v1').onclick=()=>previewConsumer('/api/consumer-demo/1/preview');
+$('consumer-v2').onclick=()=>previewConsumer('/api/consumer-demo/2/preview');
+$('consumer-rollback').onclick=()=>previewConsumer('/api/consumer-rollbacks/1/preview');
+$('consumer-confirm').onchange=()=>{$('consumer-publish').disabled=consumerBusy||!consumerReview||!$('consumer-confirm').checked;};
+$('consumer-publish').onclick=async()=>{
+  if(consumerBusy||!consumerReview||!$('consumer-confirm').checked)return;
+  const review=consumerReview;consumerBusy=true;$('consumer-publish').disabled=true;
+  try{const action=review.kind==='consumer-set-rollback'?'rollback':'publish';const result=await api(`/api/consumer-reviews/${review.id}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewDigest:review.reviewDigest,confirmed:true})});consumerReview=null;$('consumer-confirm').checked=false;$('consumer-confirm').disabled=true;status('consumer-status',`审批序列 ${result.pointer.approvalSequence} 已写入本地 Git；完整套件 ${result.pointer.releaseSetId}`);}
+  catch(error){status('consumer-status',`${error.message}；请重新生成预览再审核`,true);consumerReview=null;$('consumer-confirm').disabled=true;}
+  finally{consumerBusy=false;}
+};

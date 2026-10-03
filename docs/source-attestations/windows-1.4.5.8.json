@@ -1,0 +1,14 @@
+{
+  "repository": "Live-yum/TConvert",
+  "commit": "1bf78d08842574d959cec35d566fe95ddeef28f8",
+  "content_tree": "fc6090241a3b58e6d64a33b23fef48e96c95916f",
+  "images_tree": "0458b4d36d8debec31015c482283686f9aef6450",
+  "fonts_tree": "8be391c0a56ea71e124295ac58bd421ef3f105ad",
+  "executable_pointer_blob": "440dbf25ecf53519a5f866669e619027d2421f4f",
+  "executable_sha256": "960a03bff6050cf7be16dfc1a7b19e10fc2c4f8f835a6a3b135a50dd9e6ba2f3",
+  "executable_bytes": 26597888,
+  "game_version": "1.4.5.8",
+  "statement": "操作者确认：这次上传的 Terraria.exe，和仓库里已有的 Images／Fonts 来自同一套 Windows 1.4.5.8 游戏安装。",
+  "scope": "client-executable-images-fonts",
+  "method": "operator-confirmed-same-installation"
+}

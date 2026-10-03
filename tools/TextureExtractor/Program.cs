@@ -21,32 +21,44 @@ try {
   string relative=Path.GetRelativePath(input,path),name=Path.ChangeExtension(relative,".png"),destination=Path.Combine(output,name);
   Directory.CreateDirectory(Path.GetDirectoryName(destination));byte[] png=Texture.Png(texture);
   using(var target=new FileStream(destination,FileMode.CreateNew))target.Write(png);
-  rows.Add(new{input=relative.Replace('\\','/'),output=name.Replace('\\','/'),sourceSha256=Hash(source),sha256=Hash(png),width=texture.Width,height=texture.Height});
+  rows.Add(new{input=relative.Replace('\\','/'),output=name.Replace('\\','/'),sourceSha256=Hash(source),sha256=Hash(png),width=texture.Width,height=texture.Height,surfaceFormat=texture.SurfaceFormat,mipLevels=texture.MipLevels,exportedMip=0});
  }
  File.WriteAllText(Path.Combine(output,"texture-report.json"),JsonSerializer.Serialize(new{schemaVersion=1,converter="tconvert-lzx-portable-texture-v1",imageCount=rows.Count,images=rows,skipped,executedInput=false,extractionComplete=false,publishable=false}));return 0;
-}catch(Exception ex){Console.Error.WriteLine("Texture extraction rejected: "+ex.GetType().Name);return 1;}
+}catch(Exception ex){
+ try{File.WriteAllText(Path.Combine(args[3],"texture-error.json"),JsonSerializer.Serialize(new{stage=Texture.Stage,error=ex.GetType().Name}));}catch{}
+ Console.Error.WriteLine("Texture extraction rejected: "+ex.GetType().Name);return 1;
+}
 static string Hash(byte[] bytes)=>Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-record Pixels(int Width,int Height,byte[] Rgba);
+record Pixels(int Width,int Height,byte[] Rgba,int SurfaceFormat,int MipLevels);
 static class Texture {
+ public static string Stage="INPUT";
  const int Max=128*1024*1024;
  static byte[] Bytes(BinaryReader r,int n){if(n<0||n>Max||n>r.BaseStream.Length-r.BaseStream.Position)throw new InvalidDataException();return r.ReadBytes(n);}
  static int VarInt(BinaryReader r){uint v=0;for(int i=0;i<5;i++){byte b=r.ReadByte();if(i==4&&b>7)throw new InvalidDataException();v|=(uint)(b&127)<<(7*i);if(b<128)return checked((int)v);}throw new InvalidDataException();}
  static string Str(BinaryReader r){int n=VarInt(r);if(n>4096)throw new InvalidDataException();return new UTF8Encoding(false,true).GetString(Bytes(r,n));}
  public static Pixels Read(byte[] source){
+  Stage="HEADER";
   using var initial=new BinaryReader(new MemoryStream(source));
   if(Encoding.ASCII.GetString(Bytes(initial,3))!="XNB")throw new InvalidDataException();
   if(!new[]{(byte)'w',(byte)'m',(byte)'x'}.Contains(initial.ReadByte())||initial.ReadByte()!=5)throw new InvalidDataException();
   byte flags=initial.ReadByte();if((flags&~0x81)!=0||initial.ReadInt32()!=source.Length)throw new InvalidDataException();
   byte[] payload;
   if((flags&0x80)!=0){int size=initial.ReadInt32();if(size<1||size>Max)throw new InvalidDataException();
+   Stage="LZX_FRAMING";
    int pos=14,total=0;
-   while(pos<source.Length){if(pos+2>source.Length)throw new InvalidDataException();int a=source[pos++],b=source[pos++],frame=32768,block=(a<<8)|b;
+   while(pos<source.Length){
+    // XNA writer emits a five-byte zero terminator after all declared output.
+    // Accept only this exact bounded terminator, never arbitrary trailing data.
+    if(total==size){if(source.Length-pos==5 && source.AsSpan(pos).SequenceEqual(new byte[5])){pos=source.Length;break;}throw new InvalidDataException();}
+    if(pos+2>source.Length)throw new InvalidDataException();int a=source[pos++],b=source[pos++],frame=32768,block=(a<<8)|b;
     if(a==255){if(pos+3>source.Length)throw new InvalidDataException();frame=(b<<8)|source[pos++];block=(source[pos++]<<8)|source[pos++];}
     if(frame<1||frame>32768||block<1||pos+block>source.Length)throw new InvalidDataException();total=checked(total+frame);if(total>size)throw new InvalidDataException();pos+=block;}
    if(total!=size)throw new InvalidDataException();
+   Stage="LZX_DECODE";
    using var expanded=new MemoryStream(size);new LzxDecoder().Decompress(initial,source.Length-14,expanded,size);
    if(expanded.Length!=size)throw new InvalidDataException();payload=expanded.ToArray();
   }else payload=Bytes(initial,source.Length-10);
+  Stage="TEXTURE_PAYLOAD";
   using var r=new BinaryReader(new MemoryStream(payload));int count=VarInt(r);if(count<1||count>64)throw new InvalidDataException();
   var readers=new string[count];for(int i=0;i<count;i++){readers[i]=Str(r).Split(',')[0];r.ReadInt32();}
   if(VarInt(r)!=0)throw new InvalidDataException();int primary=VarInt(r);if(primary<1||primary>count)throw new InvalidDataException();
@@ -56,7 +68,7 @@ static class Texture {
   byte[] rgba=null;
   for(int mip=0;mip<mips;mip++){int mw=Math.Max(1,w>>mip),mh=Math.Max(1,h>>mip);long expected=format==0?(long)mw*mh*4:((long)(mw+3)/4)*((mh+3)/4)*(format==4?8:16);int n=r.ReadInt32();if(n!=expected)throw new InvalidDataException();byte[] data=Bytes(r,n);
    if(mip==0)rgba=format switch{0=>data,4=>DxtUtil.DecompressDxt1(data,w,h),5=>DxtUtil.DecompressDxt3(data,w,h),6=>DxtUtil.DecompressDxt5(data,w,h),_=>throw new InvalidDataException()};}
-  if(r.BaseStream.Position!=r.BaseStream.Length)throw new InvalidDataException();return new Pixels(w,h,rgba);
+  if(r.BaseStream.Position!=r.BaseStream.Length)throw new InvalidDataException();return new Pixels(w,h,rgba,format,mips);
  }
  static uint Crc(byte[] bytes){uint c=0xffffffff;foreach(byte b in bytes){c^=b;for(int i=0;i<8;i++)c=(c>>1)^((c&1)!=0?0xedb88320u:0);}return ~c;}
  public static byte[] Png(Pixels p){using var file=new MemoryStream();file.Write(new byte[]{137,80,78,71,13,10,26,10});

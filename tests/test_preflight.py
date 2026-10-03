@@ -162,7 +162,7 @@ class RawPreflightTests(unittest.TestCase):
 
     def test_interrupt_cleans_partial_extraction_and_persists_interrupted(self):
         job = self.preflight.submit(source(self.server))
-        def interrupt(source_path, destination, limits):
+        def interrupt(source_path, destination, limits, *, checkpoint=None):
             destination.mkdir()
             (destination / "partial").write_bytes(b"partial")
             raise KeyboardInterrupt("synthetic interrupt")

@@ -41,6 +41,10 @@ class Pipeline:
         self.checkout = self.root / "cdn-checkout"
         if not self.remote.exists():
             self.git(["init", "--bare", "--initial-branch=main", str(self.remote)])
+        # A local push starts a separate receive-pack whose repository config
+        # does not inherit the sender's -c options. Disable its automatic
+        # maintenance too, including when reopening an existing owned store.
+        self.git(["--git-dir", str(self.remote), "config", "receive.autogc", "false"])
         if not self.checkout.exists():
             self.git(["clone", str(self.remote), str(self.checkout)])
             self.git(["config", "user.name", "Resource pipeline demo"], self.checkout)
@@ -55,7 +59,11 @@ class Pipeline:
 
     @staticmethod
     def git(arguments: list[str], cwd: Path | None = None) -> str:
-        result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", *arguments], cwd=cwd, text=True,
+        # Jobs own their local repositories. Do not leave automatic Git
+        # maintenance children writing after a bounded command has returned.
+        result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null",
+                                 "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+                                 "-c", "gc.autoDetach=false", *arguments], cwd=cwd, text=True,
                                 encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         if result.returncode:
             raise PipelineError("Local Git publication operation failed")

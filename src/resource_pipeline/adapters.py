@@ -16,7 +16,7 @@ import stat
 import subprocess
 import sys
 import time
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .contracts import CoverageProfile, InputBinding, package_file, validate_contract
 from .models import ExtractionEnvelope
@@ -33,28 +33,57 @@ class AdapterLimits:
     processes: int = 64
 
 
-def file_digest(path: Path, maximum: int = 128 * 1024 * 1024) -> str:
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > maximum:
+def file_digest(path: Path, maximum: int = 128 * 1024 * 1024, *,
+                checkpoint: Callable[[], None] | None = None) -> str:
+    if checkpoint is not None:
+        checkpoint()
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise PipelineError("Invalid or oversized regular input file") from exc
+    if not stat.S_ISREG(info.st_mode) or info.st_size > maximum:
         raise PipelineError("Invalid or oversized regular input file")
     digest = hashlib.sha256()
+    size = 0
     with path.open("rb") as source:
-        while chunk := source.read(1024 * 1024):
+        while True:
+            if checkpoint is not None:
+                checkpoint()
+            chunk = source.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > maximum:
+                raise PipelineError("Invalid or oversized regular input file")
             digest.update(chunk)
+    if checkpoint is not None:
+        checkpoint()
     return digest.hexdigest()
 
 
-def tree_inventory(root: Path, limits: AdapterLimits = AdapterLimits()) -> list[dict]:
+def tree_inventory(root: Path, limits: AdapterLimits = AdapterLimits(), *,
+                   checkpoint: Callable[[], None] | None = None,
+                   reject_hardlinks: bool = False, include_hashes: bool = True) -> list[dict]:
+    if checkpoint is not None:
+        checkpoint()
     if root.is_symlink() or not root.is_dir():
         raise PipelineError("Input/output root must be a regular directory")
     entries: list[dict] = []
     total = 0
     seen: set[str] = set()
-    for directory, directories, files in os.walk(root, followlinks=False):
+    def reject_walk_error(_error):
+        raise PipelineError("Adapter tree cannot be completely read")
+    for directory, directories, files in os.walk(root, followlinks=False, onerror=reject_walk_error):
+        if checkpoint is not None:
+            checkpoint()
         for name in [*directories, *files]:
+            if checkpoint is not None:
+                checkpoint()
             path = Path(directory) / name
             relative = path.relative_to(root).as_posix()
             relative_path(relative)
-            mode = path.lstat().st_mode
+            info = path.lstat()
+            mode = info.st_mode
             if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
                 raise PipelineError("Links and special files are forbidden in adapter inputs/outputs")
             key = relative.casefold()
@@ -62,17 +91,28 @@ def tree_inventory(root: Path, limits: AdapterLimits = AdapterLimits()) -> list[
                 raise PipelineError("Adapter tree exceeds path/count policy")
             seen.add(key)
             if stat.S_ISREG(mode):
-                size = path.stat().st_size
+                if reject_hardlinks and info.st_nlink != 1:
+                    raise PipelineError("Hardlinked files cannot become read-only reservations")
+                size = info.st_size
                 total += size
                 if size > limits.file_bytes or total > limits.total_bytes:
                     raise PipelineError("Adapter tree exceeds its byte budget")
-                entries.append({"path": relative, "bytes": size, "sha256": file_digest(path, limits.file_bytes)})
+                entry = {"path": relative, "bytes": size}
+                if include_hashes:
+                    entry["sha256"] = file_digest(path, limits.file_bytes, checkpoint=checkpoint)
+                entries.append(entry)
+    if checkpoint is not None:
+        checkpoint()
     return sorted(entries, key=lambda entry: entry["path"])
 
 
-def tree_digest(root: Path, limits: AdapterLimits = AdapterLimits()) -> str:
+def tree_digest(root: Path, limits: AdapterLimits = AdapterLimits(), *,
+                checkpoint: Callable[[], None] | None = None) -> str:
     """SHA256 of canonical [{path,bytes,sha256}], sorted by relative POSIX path."""
-    return sha256(canonical_json(tree_inventory(root, limits)))
+    result = sha256(canonical_json(tree_inventory(root, limits, checkpoint=checkpoint)))
+    if checkpoint is not None:
+        checkpoint()
+    return result
 
 
 @dataclass(frozen=True)
@@ -186,18 +226,40 @@ class BubblewrapSandbox:
         return CommandPlan(tuple(argv), job, {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}, "bubblewrap-unshare-all")
 
 
-def _copy_tree(source: Path, destination: Path, limits: AdapterLimits) -> None:
-    before = tree_inventory(source, limits)
+def _copy_tree(source: Path, destination: Path, limits: AdapterLimits, *,
+               checkpoint: Callable[[], None] | None = None,
+               expected_inventory: list[dict] | None = None) -> list[dict]:
+    # An already-verified inventory may avoid an identical pre-copy rehash.
+    # Destination AND original source are still fully hashed after the copy.
+    before = expected_inventory if expected_inventory is not None else tree_inventory(source, limits, checkpoint=checkpoint)
+    if checkpoint is not None:
+        checkpoint()
     destination.mkdir()
     # Explicit byte copies: no worktree operation or writable hardlink to originals.
     for entry in before:
+        if checkpoint is not None:
+            checkpoint()
         target = destination / entry["path"]
         target.parent.mkdir(parents=True, exist_ok=True)
+        copied = 0
         with package_file(source, entry["path"]).open("rb") as read, target.open("xb") as write:
-            shutil.copyfileobj(read, write, 1024 * 1024)
+            while True:
+                if checkpoint is not None:
+                    checkpoint()
+                chunk = read.read(1024 * 1024)
+                if not chunk:
+                    break
+                copied += len(chunk)
+                if copied > entry["bytes"]:
+                    raise PipelineError("Input/tool changed while taking its private snapshot")
+                write.write(chunk)
         target.chmod(0o500 if os.access(source / entry["path"], os.X_OK) else 0o400)
-    if tree_inventory(destination, limits) != before or tree_inventory(source, limits) != before:
+    if (tree_inventory(destination, limits, checkpoint=checkpoint) != before
+            or tree_inventory(source, limits, checkpoint=checkpoint) != before):
         raise PipelineError("Input/tool changed while taking its private snapshot")
+    if checkpoint is not None:
+        checkpoint()
+    return before
 
 
 def _limits_launcher(plan: CommandPlan, limits: AdapterLimits) -> list[str]:
@@ -213,23 +275,139 @@ def _limits_launcher(plan: CommandPlan, limits: AdapterLimits) -> list[str]:
     return [sys.executable, "-I", "-S", "-c", code, *plan.argv]
 
 
-def _working_size(job: Path, limits: AdapterLimits) -> None:
-    # Cheap watchdog: hash and parse validation happens after the process exits.
-    count = total = 0
-    for root in (job / "output", job / "work"):
+@dataclass(frozen=True)
+class WorkingUsage:
+    """Actual retained bytes/paths, including directories but excluding roots."""
+    bytes: int = 0
+    paths: int = 0
+
+    def __post_init__(self):
+        if any(type(value) is not int or value < 0 for value in (self.bytes, self.paths)):
+            raise ValueError("Working usage must contain nonnegative integer counts")
+
+
+@dataclass(frozen=True)
+class ReadOnlyTreeReservation:
+    """Verified byte-copy snapshot, mounted read-only by one fixed sandbox."""
+    root: Path
+    usage: WorkingUsage
+    identity: tuple[int, int]
+    files: tuple[tuple[str, int, str], ...]
+    directories: frozenset[str]
+
+    def __post_init__(self):
+        if (not self.root.is_absolute() or type(self.files) is not tuple or type(self.directories) is not frozenset
+                or self.usage.bytes != sum(size for _, size, _ in self.files)
+                or self.usage.paths != len(self.files) + len(self.directories)):
+            raise ValueError('Read-only reservation must equal its immutable inventory')
+
+    @classmethod
+    def capture(cls, root: Path, expected: list[dict], limits: AdapterLimits,
+                checkpoint: Callable[[], None]) -> 'ReadOnlyTreeReservation':
+        checkpoint()
+        root = root.absolute()
+        if any(path.is_symlink() for path in (root, *root.parents)):
+            raise PipelineError('Read-only reservation cannot traverse links')
+        root_info = root.lstat()
+        if not stat.S_ISDIR(root_info.st_mode):
+            raise PipelineError('Read-only reservation must be a directory')
+        actual, directories, seen = [], set(), set()
+        count = total = 0
+        for directory, dirs, names in os.walk(root, followlinks=False):
+            checkpoint()
+            for name in [*dirs, *names]:
+                checkpoint()
+                path = Path(directory) / name
+                relative = relative_path(path.relative_to(root).as_posix())
+                key = relative.casefold()
+                info = path.lstat()
+                count += 1
+                if key in seen or count > limits.files:
+                    raise PipelineError('Read-only snapshot path budget exceeded')
+                seen.add(key)
+                if stat.S_ISDIR(info.st_mode):
+                    directories.add(relative)
+                elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+                    total += info.st_size
+                    if info.st_size > limits.file_bytes or total > limits.total_bytes:
+                        raise PipelineError('Read-only snapshot byte budget exceeded')
+                    actual.append((relative, info.st_size))
+                else:
+                    raise PipelineError('Read-only snapshot contains links or special files')
+        expected_files = tuple(sorted((row['path'], row['bytes'], row['sha256']) for row in expected))
+        if sorted(actual) != [(name, size) for name, size, _ in expected_files]:
+            raise PipelineError('Read-only snapshot differs from verified copy inventory')
+        checkpoint()
+        return cls(root, WorkingUsage(total, count), (root_info.st_dev, root_info.st_ino),
+                   expected_files, frozenset(directories))
+
+    def verify(self, limits: AdapterLimits, checkpoint: Callable[[], None]) -> None:
+        expected = [{'path': name, 'bytes': size, 'sha256': digest} for name, size, digest in self.files]
+        after = self.capture(self.root, expected, limits, checkpoint)
+        if after.identity != self.identity or after.usage != self.usage or after.directories != self.directories:
+            raise PipelineError('Read-only snapshot changed during extraction')
+        if tree_inventory(self.root, limits, checkpoint=checkpoint, reject_hardlinks=True) != expected:
+            raise PipelineError('Read-only snapshot hash changed during extraction')
+
+
+def _working_size(job: Path, limits: AdapterLimits, *,
+                  checkpoint: Callable[[], None] | None = None,
+                  reserved_output: WorkingUsage | None = None,
+                  reserved_readonly: tuple[ReadOnlyTreeReservation, ...] = ()) -> WorkingUsage:
+    # The default scans everything. A caller may reserve verified parent output
+    # ONLY when that directory is outside every live child's sandbox mounts.
+    # All mutable work, including child snapshots and outputs, is still scanned.
+    if checkpoint is not None:
+        checkpoint()
+    count = reserved_output.paths if reserved_output is not None else 0
+    total = reserved_output.bytes if reserved_output is not None else 0
+    sealed = {}
+    for reservation in reserved_readonly:
+        if checkpoint is not None:
+            checkpoint()
+        root = reservation.root
+        if (root == job / 'work' or job / 'work' not in root.parents
+                or any(root == prior or root in prior.parents or prior in root.parents for prior in sealed)):
+            raise PipelineError('Read-only reservation must be a disjoint child tree')
+        sealed[root] = reservation
+        count += reservation.usage.paths
+        total += reservation.usage.bytes
+    found = set()
+    if count > limits.files or total > limits.total_bytes:
+        raise PipelineError("Adapter exceeded output capacity")
+    roots = (job / "work",) if reserved_output is not None else (job / "output", job / "work")
+    for root in roots:
         for directory, directories, files in os.walk(root, followlinks=False):
+            if checkpoint is not None:
+                checkpoint()
             for name in [*directories, *files]:
+                if checkpoint is not None:
+                    checkpoint()
                 path = Path(directory) / name
                 info = path.lstat()
                 count += 1
                 if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
                     raise PipelineError("Adapter created a link or special output")
+                if path in sealed:
+                    reservation = sealed[path]
+                    if (not stat.S_ISDIR(info.st_mode)
+                            or (info.st_dev, info.st_ino) != reservation.identity or name not in directories):
+                        raise PipelineError('Read-only reservation root changed')
+                    # Root entry is counted normally; only its already-charged
+                    # descendants are pruned from this high-frequency scan.
+                    directories.remove(name)
+                    found.add(path)
                 if stat.S_ISREG(info.st_mode):
                     total += info.st_size
                     if info.st_size > limits.file_bytes:
                         raise PipelineError("Adapter exceeded output capacity")
                 if count > limits.files or total > limits.total_bytes:
                     raise PipelineError("Adapter exceeded output capacity")
+    if checkpoint is not None:
+        checkpoint()
+    if found != set(sealed):
+        raise PipelineError('Read-only reservation root is missing')
+    return WorkingUsage(bytes=total, paths=count)
 
 
 def validate_normalized_package(root: Path, binding: InputBinding, profile: CoverageProfile) -> dict:
@@ -359,24 +537,39 @@ class TrustedAdapterRunner:
             raise PipelineError("Trusted adapter failed; private diagnostics were not exposed") from exc
 
     @staticmethod
-    def _execute(plan: CommandPlan, limits: AdapterLimits, job: Path) -> None:
+    def _execute(plan: CommandPlan, limits: AdapterLimits, job: Path, *,
+                 cancel_check: Callable[[], bool] | None = None,
+                 watchdog_job: Path | None = None,
+                 reserved_output: WorkingUsage | None = None,
+                 reserved_readonly: tuple[ReadOnlyTreeReservation, ...] = ()) -> None:
         if os.name != "posix":
             raise PipelineError("This external adapter runner requires a configured POSIX sandbox")
         process: subprocess.Popen | None = None
+        watched = watchdog_job if watchdog_job is not None else job
+        deadline = time.monotonic() + limits.timeout_seconds
+        def check_cancel():
+            if cancel_check is not None and cancel_check():
+                raise PipelineError("Texture job cancelled; no output was approved")
+            if time.monotonic() >= deadline:
+                raise PipelineError("Trusted adapter timed out; no output was approved")
         try:
+            check_cancel()
             # Output is discarded, not returned to a browser or retained unbounded.
             process = subprocess.Popen(_limits_launcher(plan, limits), cwd=plan.cwd, env=plan.env,
                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                        start_new_session=True, close_fds=True)
-            deadline = time.monotonic() + limits.timeout_seconds
             while process.poll() is None:
-                _working_size(job, limits)
+                check_cancel()
+                _working_size(watched, limits, checkpoint=check_cancel, reserved_output=reserved_output,
+                              reserved_readonly=reserved_readonly)
                 if time.monotonic() >= deadline:
                     raise PipelineError("Trusted adapter timed out; no output was approved")
                 time.sleep(0.025)
-            _working_size(job, limits)
+            check_cancel()
+            _working_size(watched, limits, checkpoint=check_cancel, reserved_output=reserved_output,
+                              reserved_readonly=reserved_readonly)
             if process.returncode != 0:
-                raise PipelineError("Trusted adapter or OS sandbox failed; no output was approved")
+                raise PipelineError(f"Trusted adapter or OS sandbox failed; no output was approved (exit={process.returncode})")
         finally:
             if process is not None:
                 # Kill the process group even when its leader exited successfully:

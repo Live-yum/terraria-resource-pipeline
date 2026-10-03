@@ -15,8 +15,10 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .fixtures import demo_archive
 from .intake import UploadBodyLimitMiddleware
 from .pipeline import Pipeline
+from .consumer_control import ConsumerReleaseControl
 from .preflight import RawInputPreflight
 from .textures import configured_texture_extractor
+from .real_producer import RawEvidenceProducer
 from .security import ArchiveLimits, PipelineError, relative_path
 
 
@@ -26,10 +28,11 @@ class Review(BaseModel):
     confirmed: bool
 
 
-def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
+def create_app(root: Path | None = None, synchronous: bool = False, consumer_demo: bool = False) -> FastAPI:
     state_root = root or Path(os.environ.get("RESOURCE_PIPELINE_STATE", ".runtime"))
     pipeline = Pipeline(state_root)
-    raw_preflight = RawInputPreflight(pipeline, texture_extractor=configured_texture_extractor())
+    consumer_control = ConsumerReleaseControl(pipeline, publisher_id="synthetic-local-demo", synthetic_demo=consumer_demo)
+    raw_preflight = RawInputPreflight(pipeline, texture_extractor=configured_texture_extractor(), semantic_producer=RawEvidenceProducer())
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="resource-extract")
 
     @asynccontextmanager
@@ -39,6 +42,7 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
 
     app = FastAPI(title="资源更新与审核演示", lifespan=lifespan)
     app.state.pipeline = pipeline
+    app.state.consumer_control = consumer_control
     app.state.raw_preflight = raw_preflight
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver"])
     app.add_middleware(UploadBodyLimitMiddleware, archive_bytes=ArchiveLimits().archive_bytes)
@@ -60,27 +64,33 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
     async def known_error(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=409)
 
+    def compact_raw(value):
+        if value.get("kind") != "raw-input-preflight":
+            return value
+        for source in value["sources"].values():
+            inventory = source.get("inventory")
+            if inventory is not None:
+                source["inventory"] = {"expandedBytes": inventory["expandedBytes"], "fileCount": len(inventory["files"])}
+        for texture in value.get("textures", {}).values():
+            for key in ("images", "skipped"):
+                rows = texture.pop(key, None)
+                if rows is not None:
+                    texture[key + "Count"] = len(rows)
+        for family in value.get("producerEvidence", {}).get("familyCoverage", {}).values():
+            rows = family.pop("idsWithoutDirectImage", None)
+            if rows is not None:
+                family["idsWithoutDirectImageCount"] = len(rows)
+        return value
+
     @app.get("/api/jobs")
     def jobs():
-        results = pipeline.list()
-        for job in results:
-            if job.get("kind") == "raw-input-preflight":
-                for source in job["sources"].values():
-                    inventory = source.get("inventory")
-                    if inventory is not None:
-                        source["inventory"] = {"expandedBytes": inventory["expandedBytes"],
-                                               "fileCount": len(inventory["files"])}
-                for texture in job.get("textures", {}).values():
-                    for key in ("images", "skipped"):
-                        rows = texture.pop(key, None)
-                        if rows is not None:
-                            texture[key + "Count"] = len(rows)
-        return results
+        return [compact_raw(value) for value in pipeline.list()]
 
     @app.get("/api/jobs/{identity}")
-    def job(identity: str):
+    def job(identity: str, compact: bool = False):
         try:
-            return pipeline.get(identity)
+            value = pipeline.get(identity)
+            return compact_raw(value) if compact else value
         except KeyError:
             raise HTTPException(404, "任务不存在") from None
 
@@ -104,6 +114,26 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
         except KeyError:
             raise HTTPException(404, "任务不存在") from None
 
+    @app.post("/api/consumer-demo/{revision}/preview")
+    def consumer_preview(revision: int):
+        return consumer_control.preview_demo(revision)
+
+    @app.post("/api/consumer-reviews/{identity}/publish")
+    def consumer_publish(identity: str, review: Review):
+        return consumer_control.publish(identity, review.reviewDigest, review.confirmed)
+
+    @app.post("/api/consumer-rollbacks/{approval_sequence}/preview")
+    def consumer_rollback_preview(approval_sequence: int):
+        return consumer_control.preview_rollback(approval_sequence)
+
+    @app.post("/api/consumer-reviews/{identity}/rollback")
+    def consumer_rollback(identity: str, review: Review):
+        return consumer_control.rollback(identity, review.reviewDigest, review.confirmed)
+
+    @app.get("/api/consumer-current")
+    def consumer_current():
+        return consumer_control.current()
+
     @app.post("/api/raw-jobs", status_code=202)
     def raw_upload(server_file: UploadFile | None = File(default=None),
                    client_file: UploadFile | None = File(default=None),
@@ -118,6 +148,61 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
             return raw_preflight.process(created["id"])
         executor.submit(raw_preflight.process, created["id"])
         return created
+
+    @app.post("/api/raw-jobs/{identity}/cancel")
+    def raw_cancel(identity: str):
+        try:
+            return raw_preflight.request_cancel(identity)
+        except KeyError:
+            raise HTTPException(404, "任务不存在") from None
+
+    @app.post("/api/raw-jobs/{identity}/retry", status_code=202)
+    def raw_retry(identity: str):
+        try:
+            created = raw_preflight.retry(identity)
+        except KeyError:
+            raise HTTPException(404, "任务不存在") from None
+        if synchronous:
+            return raw_preflight.process(created["id"])
+        executor.submit(raw_preflight.process, created["id"])
+        return created
+
+    @app.get("/api/raw-jobs/{identity}/review")
+    def raw_review(identity: str):
+        try:
+            value = pipeline.get(identity)
+        except KeyError:
+            raise HTTPException(404, "任务不存在") from None
+        if value.get("kind") != "raw-input-preflight":
+            raise HTTPException(404, "不是原始双包任务")
+        from .candidate import verify_candidate
+        candidate = verify_candidate(pipeline.root / "jobs" / identity, value)
+        if candidate is not None and candidate["integrityStatus"] == "INVALID":
+            # Invalid persisted bindings must not flow through legacy compactors
+            # or leak malformed records/private diagnostic text.
+            return {"id": identity, "state": "BLOCKED", "reviewable": False, "candidate": candidate,
+                    "reviewDigest": None, "baseRelease": None, "release": None, "diff": None,
+                    "coverage": None, "familyCoverage": {},
+                    "blockers": [{"code": "CANDIDATE_INTEGRITY_INVALID",
+                                  "message": "候选证据已变化，不能审核发布"}]}
+        value = compact_raw(value)
+        ready = value.get("extractionComplete") is True and value.get("state") == "READY_FOR_REVIEW"
+        # A sealed partial candidate proves bytes only, never complete extraction.
+        ready = ready and candidate is not None and candidate["integrityStatus"] == "SEALED"
+        return {"id": identity, "state": value["state"], "reviewable": ready, "candidate": candidate,
+                "reviewDigest": value.get("reviewDigest") if ready else None,
+                "baseRelease": value.get("baseRelease"), "release": value.get("release"),
+                "diff": value.get("diff"), "coverage": value.get("coverage"),
+                "blockers": value.get("blockers", []),
+                "familyCoverage": value.get("producerEvidence", {}).get("familyCoverage", {})}
+
+    @app.post("/api/raw-jobs/{identity}/publish")
+    def raw_publish(identity: str, review: Review):
+        checked = raw_review(identity)
+        if not checked["reviewable"] or not review.confirmed or review.reviewDigest != checked["reviewDigest"]:
+            raise HTTPException(409, "真实语义尚未完整或审核已变化，未发布任何资源")
+        # Real publication identity/provider must be configured independently.
+        raise HTTPException(409, "真实 CDN 发布身份尚未配置，未发布任何资源")
 
     @app.get("/api/current")
     def current():
@@ -135,7 +220,7 @@ def create_app(root: Path | None = None, synchronous: bool = False) -> FastAPI:
             relative_path(asset_path)
         except PipelineError:
             raise HTTPException(404) from None
-        if not asset_path.startswith(("objects/", "releases/", "channels/")):
+        if not asset_path.startswith(("objects/", "releases/", "channels/", "consumer/", "release-sets/")):
             raise HTTPException(404)
         try:
             content = pipeline.published_file(asset_path)

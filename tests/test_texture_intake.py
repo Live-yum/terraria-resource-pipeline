@@ -70,3 +70,20 @@ class TextureIntakeTests(unittest.TestCase):
             self.assertEqual(listing['skippedCount'],1)
             detail=client.get('/api/jobs/'+job['id']).json()['textures']['server']
             self.assertEqual(len(detail['images']),1)
+
+    def test_surface_format_counts_preserve_legacy_unknowns(self):
+        from resource_pipeline.textures import texture_surface_formats
+        rows = [{'surfaceFormat': value} for value in (0, 0, 4, 5, 6)] + [{}]
+        self.assertEqual(texture_surface_formats(rows), {'0': 2, '4': 1, '5': 1, '6': 1, 'unknown': 1})
+        self.assertEqual(texture_surface_formats([{}, {}]), {'unknown': 2})
+        self.assertEqual(texture_surface_formats([]), {})
+
+    def test_surface_format_receipt_rejects_invalid_enum_and_coercion(self):
+        from resource_pipeline.textures import texture_surface_formats
+        for value in (True, False, '0', None, 0.0, -1, 1, 7):
+            with self.subTest(value=value), self.assertRaises(PipelineError):
+                texture_surface_formats([{'surfaceFormat': value}])
+
+        for row in (None, [], 'legacy'):
+            with self.subTest(row=row), self.assertRaises(PipelineError):
+                texture_surface_formats([row])
