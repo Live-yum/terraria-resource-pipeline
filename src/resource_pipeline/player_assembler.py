@@ -281,8 +281,10 @@ class _Renderer:
         result = Image.new('RGBA', tuple(canvas))
         try:
             for layer in layers:
-                _require(_exact(layer, ('texture', 'textureSha256', 'source', 'destination', 'tint'))
-                         and isinstance(layer['texture'], str), 'Invalid explicit player layer')
+                keys = ('texture', 'textureSha256', 'source', 'destination', 'tint')
+                _require((_exact(layer, keys) or _exact(layer, (*keys, 'composition')))
+                         and isinstance(layer['texture'], str)
+                         and layer.get('composition', 'source-over') in ('source-over', 'copy'), 'Invalid explicit player layer')
                 source, dest, tint = layer['source'], layer['destination'], layer['tint']
                 _require(type(source) is list and len(source) == 4 and all(_int(n, 0, 16384) for n in source)
                          and source[2] > 0 and source[3] > 0 and source[2] <= 512 and source[3] <= 512,
@@ -295,7 +297,8 @@ class _Renderer:
                 self.spend(w * h)
                 piece = image.crop((x, y, x + w, y + h))
                 tinted = ImageChops.multiply(piece, Image.new('RGBA', piece.size, tuple(tint)))
-                result.alpha_composite(tinted, tuple(dest))
+                if layer.get('composition', 'source-over') == 'copy': result.paste(tinted, tuple(dest))
+                else: result.alpha_composite(tinted, tuple(dest))
                 piece.close(); tinted.close()
             return result
         except BaseException:

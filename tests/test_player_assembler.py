@@ -88,6 +88,20 @@ class PlayerAssemblerTests(unittest.TestCase):
         self.assertFalse(receipt['sourceSemanticsVerified'])
         self.assertFalse(receipt['publicationApproved'])
 
+    def test_explicit_copy_preserves_hidden_rgba_without_changing_default_composite(self):
+        from resource_pipeline.player_assembler import _Renderer
+        image = Image.new('RGBA', (3, 3), (100, 80, 60, 255)); image.putpixel((1, 1), (7, 8, 9, 0))
+        stream = BytesIO(); image.save(stream, format='PNG'); image.close(); raw = stream.getvalue()
+        layer = {'texture': 'Original.png', 'textureSha256': sha256(raw), 'source': [0, 0, 3, 3],
+                 'destination': [0, 0], 'tint': [255, 255, 255, 255]}
+        renderer = _Renderer({'Original.png': raw}, lambda: None)
+        try:
+            for mode, expected in ((None, (0, 0, 0, 0)), ('source-over', (0, 0, 0, 0)), ('copy', (7, 8, 9, 0))):
+                actual = renderer.render([3, 3], [{**layer, **({'composition': mode} if mode else {})}])
+                try: self.assertEqual(actual.getpixel((1, 1)), expected)
+                finally: actual.close()
+        finally: renderer.close()
+
     def test_more_than_256_colors_uses_exact_raw_rgba(self):
         inputs = original_player_inputs()
         image = Image.new('RGBA', (32, 32))
@@ -127,6 +141,8 @@ class PlayerAssemblerTests(unittest.TestCase):
             lambda x: x['policy']['walk'][0]['frames'][0][0].update(textureSha256='0' * 64),
             lambda x: x['policy']['walk'][0]['frames'][0][0].update(destination=[True, 1]),
             lambda x: x['policy']['walk'][0]['frames'][0][0].update(tint=[256, 0, 0, 255]),
+            lambda x: x['policy']['walk'][0]['frames'][0][0].update(composition='unknown'),
+            lambda x: x['policy']['walk'][0]['frames'][0][0].update(composition=None),
             lambda x: x['policy']['walk'][0].update(frames=[[] for _ in range(14)]),
             lambda x: x['policy']['repairs']['translations'].update(unknown=[[0, 0]] * 14),
             lambda x: x['policy']['choices']['rows'].append(copy.deepcopy(x['policy']['choices']['rows'][0])),

@@ -1,0 +1,12 @@
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><AssemblyName>RuntimeObservationCollector</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion><PlatformTarget>x86</PlatformTarget>
+    <OutputPath>bin\</OutputPath><Optimize>true</Optimize><DebugType>none</DebugType>
+    <CodePage>65001</CodePage><WarningLevel>4</WarningLevel><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup><Reference Include="System"/><Reference Include="System.Core"/></ItemGroup>
+  <ItemGroup><Compile Include="Program.cs"/><Compile Include="FixedProfile.cs"/><Compile Include="FixedCollector.cs"/><Compile Include="PrimitiveJson.cs"/><Compile Include="WindowsJob.cs"/><Compile Include="SelfTest.cs"/></ItemGroup>
+  <ItemGroup><None Include="App.config"/></ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+</Project>

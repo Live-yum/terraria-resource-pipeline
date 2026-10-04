@@ -1,0 +1,27 @@
+name: Original runtime collector self-test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  original-code-only:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile original x86 collector and run synthetic self-test only
+        shell: pwsh
+        run: ./tools/RuntimeObservationCollector/Build.ps1 -SelfTest
+      - name: Record original executable and configuration hashes
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 tools/RuntimeObservationCollector/bin/RuntimeObservationCollector.exe
+          Get-FileHash -Algorithm SHA256 tools/RuntimeObservationCollector/bin/RuntimeObservationCollector.exe.config
+      - name: Preserve original code build for manual isolated acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-runtime-observation-collector
+          path: tools/RuntimeObservationCollector/bin/
+          if-no-files-found: error
+          retention-days: 7
