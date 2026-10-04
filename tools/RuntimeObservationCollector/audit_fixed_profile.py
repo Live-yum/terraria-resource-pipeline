@@ -14,7 +14,7 @@ from resource_pipeline.security import sha256
 ROOT = Path(__file__).resolve().parent
 
 
-def audit(path: Path) -> dict:
+def audit(path: Path, xna_core: Path | None = None) -> dict:
     profile = json.loads((ROOT / 'fixed-profile.json').read_text())
     if not path.is_file() or not 0 < path.stat().st_size <= 64 * 1024 * 1024:
         raise ValueError('INPUT_BYTE_LIMIT')
@@ -38,7 +38,24 @@ def audit(path: Path) -> dict:
         if (owners, p.meta.string(row[1]), p.meta.blob(row[2])[0].hex()) != (
             [expected['owner']], expected['name'], expected['signatureHex']):
             raise ValueError('FIELD_PIN_MISMATCH')
-    return dict(status='PARTIAL', metadataPinsVerified=True, methods=len(profile['methods']),
+    xna_verified = False
+    if xna_core is not None:
+        if not xna_core.is_file() or not 0 < xna_core.stat().st_size <= 16 * 1024 * 1024:
+            raise ValueError('XNA_INPUT_BYTE_LIMIT')
+        xna_raw = xna_core.read_bytes()
+        expected_hash = next(d['sha256'] for d in profile['dependencies'] if d['name'] == 'Microsoft.Xna.Framework')
+        if sha256(xna_raw) != expected_hash: raise ValueError('XNA_CORE_HASH_MISMATCH')
+        xp = _Program(xna_raw, _Budget(ItemTextureAliasLimits(), None))
+        for expected in profile['xnaVectorFields']:
+            rid = expected['token'] & 0xffffff
+            owners = [t['fullName'] for t in xp.types.values() if t['firstField'] <= rid < t['lastField']]
+            row, _ = xp.row(4, rid)
+            if (owners, xp.meta.string(row[1]), xp.meta.blob(row[2])[0].hex()) != (
+                [expected['owner']], expected['name'], expected['signatureHex']):
+                raise ValueError('XNA_FIELD_PIN_MISMATCH')
+        xna_verified = True
+    return dict(status='PARTIAL', metadataPinsVerified=xna_verified, gameMetadataPinsVerified=True,
+                xnaFieldPinsVerified=xna_verified, methods=len(profile['methods']),
                 fields=len(profile['fields']), inputSha256=profile['sourceSha256'],
                 executedInput=False, compile='NOT_RUN', initializationVerified=False,
                 complete=False, publishable=False)
@@ -47,5 +64,6 @@ def audit(path: Path) -> dict:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--client', type=Path, required=True)
+    parser.add_argument('--xna-core', type=Path)
     args = parser.parse_args()
-    print(json.dumps(audit(args.client), indent=2))
+    print(json.dumps(audit(args.client, args.xna_core), indent=2))

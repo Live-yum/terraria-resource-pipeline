@@ -8,6 +8,118 @@
   "publishable": false,
   "methods": [
     {
+      "key": "localizedTextValue",
+      "owner": "Terraria.Localization.LocalizedText",
+      "name": "get_Value",
+      "token": 100671576,
+      "signatureHex": "20000e",
+      "methodToken": "0x06002058",
+      "metadataOffset": 7880948,
+      "bodyOffset": 5422184,
+      "codeOffset": 5422196,
+      "codeBytes": 51,
+      "ilSha256": "8e4188b46f642a55e890826cbcffbb41bcd42c8214c63b43f8de108280ea04b6",
+      "signatureOffset": 9659477,
+      "signatureSha256": "df29f5ab2554df47369dafce3bc8630f16eabc3f72c21bbd24c5e73c286f650f",
+      "localSignatureSha256": "63f105c8c664f63a7765aee8a5434263b3c80a73d729b038fab15ac338c782cf"
+    },
+    {
+      "key": "buffName",
+      "owner": "Terraria.Lang",
+      "name": "GetBuffName",
+      "token": 100663770,
+      "signatureHex": "00010e08",
+      "methodToken": "0x060001da",
+      "metadataOffset": 7740440,
+      "bodyOffset": 103740,
+      "codeOffset": 103741,
+      "codeBytes": 13,
+      "ilSha256": "5c9e3c071b0771cb5afcef4d701a447a4fa670eea32c61a7b9bda460b5e22445",
+      "signatureOffset": 9714258,
+      "signatureSha256": "1e0acf33ca250a1c401a2fd9399e8a2da22fecb9d85445b2a5091bbf32627ed7",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "buffDescription",
+      "owner": "Terraria.Lang",
+      "name": "GetBuffDescription",
+      "token": 100663771,
+      "signatureHex": "00010e08",
+      "methodToken": "0x060001db",
+      "metadataOffset": 7740458,
+      "bodyOffset": 103754,
+      "codeOffset": 103755,
+      "codeBytes": 13,
+      "ilSha256": "dae5fcb4e8ad05ae0eee6150b26c300cbfbffb40e6d53c44ea2e720ce5fdd417",
+      "signatureOffset": 9714258,
+      "signatureSha256": "1e0acf33ca250a1c401a2fd9399e8a2da22fecb9d85445b2a5091bbf32627ed7",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "armorShaderForItem",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderDataSet",
+      "name": "GetShaderFromItemId",
+      "token": 100671949,
+      "signatureHex": "200112881408",
+      "methodToken": "0x060021cd",
+      "metadataOffset": 7887662,
+      "bodyOffset": 5492320,
+      "codeOffset": 5492321,
+      "codeBytes": 42,
+      "ilSha256": "7bfdddc9dcc9840b1361834391b11aa28858ea4493b7bb13ae0e089c446dd61a",
+      "signatureOffset": 9861640,
+      "signatureSha256": "bf54e7a42ef73c617e61550d2e8d0f725a5f082ead1fcc147ae96842eb3c1fbd",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "armorShaderId",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderDataSet",
+      "name": "GetShaderIdFromItemId",
+      "token": 100671950,
+      "signatureHex": "20010808",
+      "methodToken": "0x060021ce",
+      "metadataOffset": 7887680,
+      "bodyOffset": 5492363,
+      "codeOffset": 5492364,
+      "codeBytes": 29,
+      "ilSha256": "9f7c232a3e6dbe1dd707484134c7d31e90d95859ed3d5b362818f1dc698a8944",
+      "signatureOffset": 9660536,
+      "signatureSha256": "4b9e7ad1d9b0e78ee86739644805850eaa8d714505339182128f46c75c223327",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "hairShaderId",
+      "owner": "Terraria.Graphics.Shaders.HairShaderDataSet",
+      "name": "GetShaderIdFromItemId",
+      "token": 100671957,
+      "signatureHex": "20010608",
+      "methodToken": "0x060021d5",
+      "metadataOffset": 7887806,
+      "bodyOffset": 5492730,
+      "codeOffset": 5492731,
+      "codeBytes": 29,
+      "ilSha256": "675091dc92a0c05614cdf2a56a4ffc7621c7bc961ed63e8e828c0542efda89eb",
+      "signatureOffset": 9861693,
+      "signatureSha256": "96c0067957bec538b6788207b4024444bb195dbd78cb500d64b05391a9db86b9",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "faceSetsCctor",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": ".cctor",
+      "token": 100683893,
+      "signatureHex": "000001",
+      "methodToken": "0x06005075",
+      "metadataOffset": 8102654,
+      "bodyOffset": 7337368,
+      "codeOffset": 7337380,
+      "codeBytes": 268,
+      "ilSha256": "1c17fe9aa08693f923e752afb7bac6400e6b70468882aa109f7e0ff160affbc4",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "key": "gameMode",
       "owner": "Terraria.Main",
       "name": "get_GameMode",
@@ -633,6 +745,176 @@
     }
   ],
   "fields": [
+    {
+      "key": "lang.prefix",
+      "owner": "Terraria.Lang",
+      "name": "prefix",
+      "token": 67109220,
+      "signatureHex": "061d128684",
+      "metadataOffset": 7414816,
+      "signatureOffset": 9662593,
+      "signatureSha256": "59da67a6a5743ffc5cc74f98fdc0f8eafe054e7b8793308c23056b8435b9d247"
+    },
+    {
+      "key": "buffId.Count",
+      "owner": "Terraria.ID.BuffID",
+      "name": "Count",
+      "token": 67118231,
+      "signatureHex": "0608",
+      "metadataOffset": 7504926,
+      "signatureOffset": 9660347,
+      "signatureSha256": "557c754d26e2667287367a856ea5fcd584f35ab796d24a6a875d1648a4637d23"
+    },
+    {
+      "key": "faceId.Count",
+      "owner": "Terraria.ID.ArmorIDs+Face",
+      "name": "Count",
+      "token": 67137938,
+      "signatureHex": "0604",
+      "metadataOffset": 7701996,
+      "signatureOffset": 9808084,
+      "signatureSha256": "5ea6d85d0fbe5fe428c0ac095c6c1b2bc3e58a8c4f6f58c445e5b1b5e9332d35"
+    },
+    {
+      "key": "shader.armor",
+      "owner": "Terraria.Graphics.Shaders.GameShaders",
+      "name": "Armor",
+      "token": 67128397,
+      "signatureHex": "06128800",
+      "metadataOffset": 7606586,
+      "signatureOffset": 9830383,
+      "signatureSha256": "aca0467f6d7f82440d51b936b704cbc3070a3b3085ed59dbe327be82e8a05bbd"
+    },
+    {
+      "key": "shader.hair",
+      "owner": "Terraria.Graphics.Shaders.GameShaders",
+      "name": "Hair",
+      "token": 67128398,
+      "signatureHex": "06128804",
+      "metadataOffset": 7606596,
+      "signatureOffset": 9830388,
+      "signatureSha256": "af879a68e3e12b9a1ee103b3a29484e464574638a781bc657ff44f3eb1a71fd9"
+    },
+    {
+      "key": "hair.shaderCount",
+      "owner": "Terraria.Graphics.Shaders.HairShaderDataSet",
+      "name": "_shaderDataCount",
+      "token": 67128295,
+      "signatureHex": "0605",
+      "metadataOffset": 7605566,
+      "signatureOffset": 9726573,
+      "signatureSha256": "678feb3f747a2d2f550e94426e93e05c4701e4ee09543ff89eb06986772c261c"
+    },
+    {
+      "key": "shader.pass",
+      "owner": "Terraria.Graphics.Shaders.ShaderData",
+      "name": "_passName",
+      "token": 67128401,
+      "signatureHex": "060e",
+      "metadataOffset": 7606626,
+      "signatureOffset": 9659872,
+      "signatureSha256": "89c0c2d74467289c8bf954f4cde47f4f794bcf8e6ee65e19cd0b275e47aca3ec"
+    },
+    {
+      "key": "shader.color",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderData",
+      "name": "_uColor",
+      "token": 67128376,
+      "signatureHex": "061180b9",
+      "metadataOffset": 7606376,
+      "signatureOffset": 9742849,
+      "signatureSha256": "5113a8ab6596771d19bfdd6f8f5fe90bb656e695bb616391a806ebcf98f3d867"
+    },
+    {
+      "key": "shader.secondaryColor",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderData",
+      "name": "_uSecondaryColor",
+      "token": 67128377,
+      "signatureHex": "061180b9",
+      "metadataOffset": 7606386,
+      "signatureOffset": 9742849,
+      "signatureSha256": "5113a8ab6596771d19bfdd6f8f5fe90bb656e695bb616391a806ebcf98f3d867"
+    },
+    {
+      "key": "shader.saturation",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderData",
+      "name": "_uSaturation",
+      "token": 67128378,
+      "signatureHex": "060c",
+      "metadataOffset": 7606396,
+      "signatureOffset": 9660392,
+      "signatureSha256": "24425aff3642fda4c9e82267f9f9efc0ef3a539bb3c6234769caa793f206e966"
+    },
+    {
+      "key": "main.debuff",
+      "owner": "Terraria.Main",
+      "name": "debuff",
+      "token": 67111714,
+      "signatureHex": "061d02",
+      "metadataOffset": 7439756,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.PreventHairDraw",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "PreventHairDraw",
+      "token": 67140583,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728446,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.OverrideHelmet",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "OverrideHelmet",
+      "token": 67140584,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728456,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceUnderHairLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceUnderHairLayer",
+      "token": 67140585,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728466,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceMaskLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceMaskLayer",
+      "token": 67140586,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728476,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceFlowerLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceFlowerLayer",
+      "token": 67140587,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728486,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceHeadLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceHeadLayer",
+      "token": 67140588,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728496,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
     {
       "key": "item.damage",
       "owner": "Terraria.Item",
@@ -1662,5 +1944,34 @@
   "limitations": [
     "Candidate diagnostic subsequence, not proven complete initializer closure.",
     "No game or vendor execution or compilation performed in source-generation environment."
+  ],
+  "xnaVectorFields": [
+    {
+      "key": "X",
+      "owner": "Microsoft.Xna.Framework.Vector3",
+      "name": "X",
+      "token": 67110415,
+      "signatureHex": "060c"
+    },
+    {
+      "key": "Y",
+      "owner": "Microsoft.Xna.Framework.Vector3",
+      "name": "Y",
+      "token": 67110416,
+      "signatureHex": "060c"
+    },
+    {
+      "key": "Z",
+      "owner": "Microsoft.Xna.Framework.Vector3",
+      "name": "Z",
+      "token": 67110417,
+      "signatureHex": "060c"
+    }
+  ],
+  "armorShaderClasses": [
+    "Terraria.Graphics.Shaders.ArmorShaderData",
+    "Terraria.GameContent.Dyes.ReflectiveArmorShaderData",
+    "Terraria.GameContent.Dyes.TeamArmorShaderData",
+    "Terraria.GameContent.Dyes.TwilightDyeShaderData"
   ]
 }

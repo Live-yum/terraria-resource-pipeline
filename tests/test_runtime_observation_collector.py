@@ -15,7 +15,7 @@ class RuntimeObservationCollectorSourceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.profile = json.loads((ROOT / 'fixed-profile.json').read_text())
         cls.program = (ROOT / 'Program.cs').read_text()
-        cls.collector = (ROOT / 'FixedCollector.cs').read_text()
+        cls.collector = (ROOT / 'FixedCollector.cs').read_text() + (ROOT / 'PlayerObservation.cs').read_text()
 
     def test_fixed_named_fields_cover_consumer_without_derived_defaults(self):
         fields = self.profile['fields']
@@ -30,7 +30,7 @@ class RuntimeObservationCollectorSourceTests(unittest.TestCase):
         generated = (ROOT / 'FixedProfile.cs').read_text()
         for pin in self.profile['methods']:
             self.assertIn(f'new MethodPin("{pin["key"]}", "{pin["owner"]}", "{pin["name"]}", 0x{pin["token"]:08x}, "{pin["signatureSha256"]}", "{pin["ilSha256"]}")', generated)
-        for pin in self.profile['fields']:
+        for pin in self.profile['fields'] + self.profile['xnaVectorFields']:
             self.assertIn(f'new FieldPin("{pin["key"]}", "{pin["owner"]}", "{pin["name"]}", 0x{pin["token"]:08x}, "{pin["signatureHex"]}")', generated)
         for pins in (self.profile['methods'], self.profile['fields']):
             self.assertEqual(len(pins), len({p['key'] for p in pins}))
@@ -50,6 +50,35 @@ class RuntimeObservationCollectorSourceTests(unittest.TestCase):
         self.assertIn('CheckAssembly(assembly);', self.collector)
         self.assertNotIn('permittedMemory', self.collector)
         self.assertNotIn('BinaryFormatter', self.collector)
+
+    def test_player_observations_have_closed_fields_and_no_render_entry(self):
+        source = (ROOT / 'PlayerObservation.cs').read_text()
+        self.assertIn('Object.ReferenceEquals(shader.GetType().Assembly,game)', source)
+        self.assertIn('field.DeclaringType==type', source)
+        self.assertIn('XNA_VECTOR_FIELD_PIN_MISMATCH', source)
+        self.assertIn('ITEM_ARMOR_SHADER_ID_MISMATCH', source)
+        self.assertIn('ITEM_HAIR_SHADER_ID_MISMATCH', source)
+        self.assertIn('"dedServ",true', source)
+        self.assertIn('"omittedFields",new object[]{"dyes.image"}', source)
+        self.assertNotIn('Apply(', source)
+        self.assertNotIn('GetProperties', source)
+        self.assertNotIn('GetField(', source)
+        self.assertIn('"mainDebuff",debuffs', source)
+        self.assertIn('hairBindings.ToArray()', source)
+        self.assertIn('Clone()', source)
+        self.assertEqual({x['name'] for x in self.profile['xnaVectorFields']}, {'X', 'Y', 'Z'})
+        self.assertTrue(all(x['signatureHex'] == '060c' for x in self.profile['xnaVectorFields']))
+
+    def test_prefix_names_preserve_observed_full_registry(self):
+        source = (ROOT / 'PlayerObservation.cs').read_text()
+        self.assertIn('ArrayField("lang.prefix",textType,count)', source)
+        self.assertIn('Object.ReferenceEquals(textType.Assembly,game)', source)
+        self.assertIn('for (int id=0;id<count;id++)', source)
+        self.assertIn('ObservedText(Call("localizedTextValue",text))', source)
+        self.assertIn('"prefixNames",prefixNames', self.collector)
+        self.assertNotIn('无前缀', source)
+        self.assertIn('localizedTextValue', {x['key'] for x in self.profile['methods']})
+        self.assertIn('lang.prefix', {x['key'] for x in self.profile['fields']})
 
     def test_self_test_branch_precedes_all_runtime_gates(self):
         branch = self.program.index('if (args.Length==1 && args[0]=="--self-test")')

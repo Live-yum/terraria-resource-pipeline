@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RuntimeObservationCollector {
-internal sealed class FixedCollector : IDisposable {
+internal sealed partial class FixedCollector : IDisposable {
     private readonly string input, output;
     private Assembly game;
     private readonly Dictionary<string,MethodBase> methods=new Dictionary<string,MethodBase>(StringComparer.Ordinal);
@@ -214,9 +214,9 @@ internal sealed class FixedCollector : IDisposable {
         }
         SortedDictionary<string,object> groups=PrimitiveJson.Object(),sets=PrimitiveJson.Object(),priorities=PrimitiveJson.Object(),pools=PrimitiveJson.Object();
         foreach (FieldPin pin in FixedProfile.Fields) {
-            if (pin.Key.StartsWith("groups.",StringComparison.Ordinal)) groups.Add(pin.Name,(bool[])ArrayField(pin.Key,typeof(bool),count));
-            if (pin.Key.StartsWith("sets.",StringComparison.Ordinal)) sets.Add(pin.Name,(bool[])ArrayField(pin.Key,typeof(bool),count));
-            if (pin.Key.StartsWith("priorities.",StringComparison.Ordinal)) priorities.Add(pin.Name,(int[])ArrayField(pin.Key,typeof(int),count));
+            if (pin.Key.StartsWith("groups.",StringComparison.Ordinal)) groups.Add(pin.Name,(bool[])ArrayField(pin.Key,typeof(bool),count).Clone());
+            if (pin.Key.StartsWith("sets.",StringComparison.Ordinal)) sets.Add(pin.Name,(bool[])ArrayField(pin.Key,typeof(bool),count).Clone());
+            if (pin.Key.StartsWith("priorities.",StringComparison.Ordinal)) priorities.Add(pin.Name,(int[])ArrayField(pin.Key,typeof(int),count).Clone());
             if (pin.Key.StartsWith("pools.",StringComparison.Ordinal)) {
                 Array source=Read(pin.Key) as Array;
                 Program.Need(source!=null && source.Rank==1 && source.GetLowerBound(0)==0 && source.Length>0 && source.Length<=256,"PREFIX_POOL_BOUND");
@@ -239,10 +239,12 @@ internal sealed class FixedCollector : IDisposable {
             "expertMode",expert,"masterMode",master,"mechdusa",mechdusa,
             "activeWorldFileDataPresent",Read("main.ActiveWorldFileData")!=null,"difficultyOverride",difficultyOverride,
             "dedServ",Read("main.dedServ"),"netMode",Integer("main.netMode"),"localPlayerIndex",Integer("main.myPlayer"));
+        object playerObservation=CapturePlayerObservation(rows);
+        object[] prefixNames=CapturePrefixNames(prefixCount);
         foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies()) CheckAssembly(assembly);
-        return PrimitiveJson.Object("schemaVersion",1,"kind","pinned-item-data-observation-fragment","status","PARTIAL",
+        return PrimitiveJson.Object("schemaVersion",1,"kind","pinned-item-player-data-observation-fragment","status","PARTIAL",
             "gameVersion","1.4.5.8","culture",culture,"context",context,"sourceSha256",FixedProfile.GameSha256,"itemCount",count,"prefixCount",prefixCount,
-            "records",rows,"groups",groups,"itemSets",sets,"priorities",priorities,"pools",pools,
+            "playerObservation",playerObservation,"prefixNames",prefixNames,"records",rows,"groups",groups,"itemSets",sets,"priorities",priorities,"pools",pools,
             "initializersReturned",stages.ToArray(),"worldFlags",world,"managedAssemblyHashes",loaded,
             "nativeModuleHashes",NativeReceipt(),"randomSeed",0,"collectorExecutableSha256",Program.HashFile(typeof(FixedCollector).Assembly.Location),
             "osVersion",Environment.OSVersion.VersionString,"clrVersion",Environment.Version.ToString(),

@@ -9,7 +9,7 @@ The existing 110-resource publication policy is unchanged. The fragment is not a
 ## What is implemented
 
 - Only client SHA-256 `960a03bff6050cf7be16dfc1a7b19e10fc2c4f8f835a6a3b135a50dd9e6ba2f3`, assembly Terraria 1.4.5.8. No alternate source, user-chosen method, assembly name, token, type, expression, serialized object or invocation argument is accepted.
-- 39 fixed method descriptors, including exact metadata signatures and IL hashes; 119 fixed field descriptors with exact tokens/signatures. `fixed-profile.json` and `FixedProfile.cs` are deliberately redundant, cross-checked by original Python tests.
+- 46 fixed method descriptors, including exact metadata signatures and IL hashes; 136 fixed game field descriptors plus three fixed XNA Vector3 field descriptors with exact tokens/signatures. `fixed-profile.json` and `FixedProfile.cs` are deliberately redundant, cross-checked by original Python tests.
 - All 6,195 positive requested IDs from independently pinned `ItemID.Count == 6196`; 47 named actual Item fields, genuine `Item.Name`, ContentSamples persistent-ID dictionary entries, and the actual research-cap API's bool/out-int result.
 - All seven PrefixLegacy boolean arrays, all eight prefix pools, five ItemID sets (the adapter's four plus material), and all 20 SortingPriority arrays. Arrays retain ID zero and must have the full observed Count. Prefix pool members are range-checked.
 - Names, research absence and requested-ID versus resolved-type differences are preserved explicitly. No missing Item property becomes zero/false, no name/persistent-ID is synthesized, and absent research membership is not silently promoted to a complete consumer value.
@@ -66,7 +66,7 @@ On Windows with the built-in Microsoft Framework compiler:
 powershell -NoProfile -File tools\RuntimeObservationCollector\Build.ps1 -SelfTest
 ```
 
-This compiles six original C# files against only standard System/System.Core libraries, targets x86, and runs only `--self-test`. No NuGet restore, network, game/vendor reference or source binary is needed. The self-test branch returns before path handling, Windows Job setup, reflection binding or game/dependency loads. The tests cover primitive serialization/escaping and exact ordering, numeric narrowing and exact Single-to-double JSON promotion, explicit rejection of arbitrary objects/getters/ToString, nonfinite values, bad Unicode, depth/array/string/output limits, hash mismatches, opt-in argument shape and fixed descriptor uniqueness.
+This compiles seven original C# files against only standard System/System.Core libraries, targets x86, and runs only `--self-test`. No NuGet restore, network, game/vendor reference or source binary is needed. The self-test branch returns before path handling, Windows Job setup, game reflection/binding and game/dependency loads. The tests cover primitive serialization/escaping and exact ordering, numeric narrowing and exact Single-to-double JSON promotion, explicit rejection of arbitrary objects/getters/ToString, nonfinite values, bad Unicode, depth/array/string/output limits, hash mismatches, opt-in argument shape and fixed descriptor uniqueness.
 
 The project targets .NET Framework 4.8; source syntax remains compatible with the built-in CLR4 C# compiler. `App.config` enables the legacy activation policy needed for the exact old mixed-mode runtime. The builder emits original executable/config files in its local `bin` directory only.
 
@@ -106,3 +106,14 @@ PYTHONPATH=src python -m unittest discover -s tests -p test_runtime_observation_
 ```
 
 The receipt records `requestedExecutionMode` as an operator declaration and `isolationVerified=false`. The process cannot attest that the external VM/network/host-directory boundary was established. A command-line flag never establishes that boundary.
+
+
+## Player observation extension
+
+The `playerObservation` fragment additionally records bounded buff name/description API results, initialized armor-shader parameters with an exact four-class allowlist, six complete face boolean registries, and positive hair-dye item/shader links. Buff and face counts are observed; the joining adapter independently checks their pinned source shapes. Source strings are preserved, not replaced with fallback names. Shader ID values must match freshly captured Item fields. Vector3 components are read only through exact Core assembly/field signature bindings; no arbitrary object traversal or shader Apply occurs.
+
+`dyes.image` is explicitly omitted: dedicated-server initialization does not retain that source asset name, and the current CPU consumer does not read the optional field. Main.debuff is recorded separately, not substituted for the application's curated negative-buff policy. All arrays are copied into the observation snapshot. Source-owned game facts, app-owned selection/rendering/history policies, and actual runtime acceptance remain separate.
+
+The new player extension's compilation and game execution are NOT_RUN until its own exact-head Windows CI and explicit isolated runtime acceptance. Earlier PR8 compilation covers only the prior Item-only version. The optional data-only audit argument `--xna-core PATH` checks the three SDK field pins; without it, gameMetadataPinsVerified can be true while metadataPinsVerified and xnaFieldPinsVerified remain false.
+
+Prefix names are captured from the exact pinned Lang.prefix LocalizedText array after the same zh-Hans initialization. IDs include zero, and observed empty text is retained; no display label is invented by the collector.

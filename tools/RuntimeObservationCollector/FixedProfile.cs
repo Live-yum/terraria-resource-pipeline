@@ -3,6 +3,13 @@ namespace RuntimeObservationCollector {
 internal static class FixedProfile {
 internal const string GameSha256 = "960a03bff6050cf7be16dfc1a7b19e10fc2c4f8f835a6a3b135a50dd9e6ba2f3";
 internal static readonly MethodPin[] Methods = new MethodPin[] {
+new MethodPin("localizedTextValue", "Terraria.Localization.LocalizedText", "get_Value", 0x06002058, "df29f5ab2554df47369dafce3bc8630f16eabc3f72c21bbd24c5e73c286f650f", "8e4188b46f642a55e890826cbcffbb41bcd42c8214c63b43f8de108280ea04b6"),
+new MethodPin("buffName", "Terraria.Lang", "GetBuffName", 0x060001da, "1e0acf33ca250a1c401a2fd9399e8a2da22fecb9d85445b2a5091bbf32627ed7", "5c9e3c071b0771cb5afcef4d701a447a4fa670eea32c61a7b9bda460b5e22445"),
+new MethodPin("buffDescription", "Terraria.Lang", "GetBuffDescription", 0x060001db, "1e0acf33ca250a1c401a2fd9399e8a2da22fecb9d85445b2a5091bbf32627ed7", "dae5fcb4e8ad05ae0eee6150b26c300cbfbffb40e6d53c44ea2e720ce5fdd417"),
+new MethodPin("armorShaderForItem", "Terraria.Graphics.Shaders.ArmorShaderDataSet", "GetShaderFromItemId", 0x060021cd, "bf54e7a42ef73c617e61550d2e8d0f725a5f082ead1fcc147ae96842eb3c1fbd", "7bfdddc9dcc9840b1361834391b11aa28858ea4493b7bb13ae0e089c446dd61a"),
+new MethodPin("armorShaderId", "Terraria.Graphics.Shaders.ArmorShaderDataSet", "GetShaderIdFromItemId", 0x060021ce, "4b9e7ad1d9b0e78ee86739644805850eaa8d714505339182128f46c75c223327", "9f7c232a3e6dbe1dd707484134c7d31e90d95859ed3d5b362818f1dc698a8944"),
+new MethodPin("hairShaderId", "Terraria.Graphics.Shaders.HairShaderDataSet", "GetShaderIdFromItemId", 0x060021d5, "96c0067957bec538b6788207b4024444bb195dbd78cb500d64b05391a9db86b9", "675091dc92a0c05614cdf2a56a4ffc7621c7bc961ed63e8e828c0542efda89eb"),
+new MethodPin("faceSetsCctor", "Terraria.ID.ArmorIDs+Face+Sets", ".cctor", 0x06005075, "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568", "1c17fe9aa08693f923e752afb7bac6400e6b70468882aa109f7e0ff160affbc4"),
 new MethodPin("gameMode", "Terraria.Main", "get_GameMode", 0x06000c49, "45baf4ad75fe7f0e9ee25f5277a4be2564e3e8c17c9ef74110cec8649cb95002", "5c810ceeb05042922504d06f2df5f298bcfe52fc00da80333d64aa59668e5df4"),
 new MethodPin("difficulty", "Terraria.Main", "get_Difficulty", 0x06000c54, "a904ee9128af7efec57ca603efeb0344736ea52b9784fc0611ae775f4f258db1", "ba22b5227afd0507b0890f148c2b03302fb797fd2bc8866df56bce4cca1b07a3"),
 new MethodPin("expertMode", "Terraria.Main", "get_expertMode", 0x06000c53, "65d27a48dfef406db8f5f437423bfa5f9c83d77bfc12f8a14b8ce3ede5892fb5", "7477afc3f320b303e5ffb5c0c3e85f31d4ad3dde87b13c9791e60f65fa2a8310"),
@@ -44,6 +51,23 @@ new MethodPin("groupsCctor", "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSet
 new MethodPin("poolsCctor", "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes", ".cctor", 0x06004c9d, "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568", "e595213c9306a08fa39006a28500f169bef535410924b766c061426f9031f07f"),
 };
 internal static readonly FieldPin[] Fields = new FieldPin[] {
+new FieldPin("lang.prefix", "Terraria.Lang", "prefix", 0x04000164, "061d128684"),
+new FieldPin("buffId.Count", "Terraria.ID.BuffID", "Count", 0x04002497, "0608"),
+new FieldPin("faceId.Count", "Terraria.ID.ArmorIDs+Face", "Count", 0x04007192, "0604"),
+new FieldPin("shader.armor", "Terraria.Graphics.Shaders.GameShaders", "Armor", 0x04004c4d, "06128800"),
+new FieldPin("shader.hair", "Terraria.Graphics.Shaders.GameShaders", "Hair", 0x04004c4e, "06128804"),
+new FieldPin("hair.shaderCount", "Terraria.Graphics.Shaders.HairShaderDataSet", "_shaderDataCount", 0x04004be7, "0605"),
+new FieldPin("shader.pass", "Terraria.Graphics.Shaders.ShaderData", "_passName", 0x04004c51, "060e"),
+new FieldPin("shader.color", "Terraria.Graphics.Shaders.ArmorShaderData", "_uColor", 0x04004c38, "061180b9"),
+new FieldPin("shader.secondaryColor", "Terraria.Graphics.Shaders.ArmorShaderData", "_uSecondaryColor", 0x04004c39, "061180b9"),
+new FieldPin("shader.saturation", "Terraria.Graphics.Shaders.ArmorShaderData", "_uSaturation", 0x04004c3a, "060c"),
+new FieldPin("main.debuff", "Terraria.Main", "debuff", 0x04000b22, "061d02"),
+new FieldPin("faceSets.PreventHairDraw", "Terraria.ID.ArmorIDs+Face+Sets", "PreventHairDraw", 0x04007be7, "061d02"),
+new FieldPin("faceSets.OverrideHelmet", "Terraria.ID.ArmorIDs+Face+Sets", "OverrideHelmet", 0x04007be8, "061d02"),
+new FieldPin("faceSets.DrawInFaceUnderHairLayer", "Terraria.ID.ArmorIDs+Face+Sets", "DrawInFaceUnderHairLayer", 0x04007be9, "061d02"),
+new FieldPin("faceSets.DrawInFaceMaskLayer", "Terraria.ID.ArmorIDs+Face+Sets", "DrawInFaceMaskLayer", 0x04007bea, "061d02"),
+new FieldPin("faceSets.DrawInFaceFlowerLayer", "Terraria.ID.ArmorIDs+Face+Sets", "DrawInFaceFlowerLayer", 0x04007beb, "061d02"),
+new FieldPin("faceSets.DrawInFaceHeadLayer", "Terraria.ID.ArmorIDs+Face+Sets", "DrawInFaceHeadLayer", 0x04007bec, "061d02"),
 new FieldPin("item.damage", "Terraria.Item", "damage", 0x040004ac, "0608"),
 new FieldPin("item.useAnimation", "Terraria.Item", "useAnimation", 0x040004a1, "0608"),
 new FieldPin("item.mana", "Terraria.Item", "mana", 0x040004d8, "0608"),
@@ -182,4 +206,11 @@ new DependencyPin(null, "X3DAudio1_7.dll", "288c701bdedf1d45c63dd0b7d424a752f881
 };
 internal static readonly string[] ItemFields = new string[] { "damage", "useAnimation", "mana", "knockBack", "accessory", "vanity", "headSlot", "bodySlot", "legSlot", "handOnSlot", "handOffSlot", "backSlot", "frontSlot", "shoeSlot", "waistSlot", "wingSlot", "shieldSlot", "neckSlot", "faceSlot", "balloonSlot", "beardSlot", "dye", "maxStack", "rare", "defense", "value", "pick", "axe", "hammer", "fishingPole", "bait", "healLife", "healMana", "ammo", "buffType", "createTile", "createWall", "mountType", "makeNPC", "hairDye", "consumable", "material", "questItem", "paint", "paintCoating", "notAmmo", "useAmmo" };
 internal static readonly string[] PriorityFields = new string[] { "SortingPriorityExtractibles", "SortingPriorityMaterials", "SortingPriorityMiscAcorns", "SortingPriorityMiscBossBags", "SortingPriorityMiscGems", "SortingPriorityMiscHerbsAndSeeds", "SortingPriorityMiscImportants", "SortingPriorityPainting", "SortingPriorityPotionsBuffs", "SortingPriorityPotionsDyeMaterial", "SortingPriorityRopes", "SortingPriorityTerraforming", "SortingPriorityToolsFishing", "SortingPriorityToolsGolf", "SortingPriorityToolsInstruments", "SortingPriorityToolsKeys", "SortingPriorityToolsKites", "SortingPriorityToolsMisc", "SortingPriorityWeaponsRanged", "SortingPriorityWiring" };
+internal static readonly FieldPin[] XnaVectorFields = new FieldPin[] {
+new FieldPin("X", "Microsoft.Xna.Framework.Vector3", "X", 0x0400060f, "060c"),
+new FieldPin("Y", "Microsoft.Xna.Framework.Vector3", "Y", 0x04000610, "060c"),
+new FieldPin("Z", "Microsoft.Xna.Framework.Vector3", "Z", 0x04000611, "060c"),
+};
+internal static readonly string[] FaceSets = new string[] { "PreventHairDraw", "OverrideHelmet", "DrawInFaceUnderHairLayer", "DrawInFaceMaskLayer", "DrawInFaceFlowerLayer", "DrawInFaceHeadLayer" };
+internal static readonly string[] ArmorShaderClasses = new string[] { "Terraria.Graphics.Shaders.ArmorShaderData", "Terraria.GameContent.Dyes.ReflectiveArmorShaderData", "Terraria.GameContent.Dyes.TeamArmorShaderData", "Terraria.GameContent.Dyes.TwilightDyeShaderData" };
 }}
