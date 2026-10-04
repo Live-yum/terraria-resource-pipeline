@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import struct
+import hashlib
 
 from .item_texture_aliases import (
     ItemTextureAliasLimits, _Budget, _Program, _CheckpointCancelled, _constant,
@@ -17,8 +18,18 @@ from .item_texture_aliases import (
 )
 from .security import sha256
 from .server_semantics import SemanticLimits, read_assembly_bytes
-from .source_closure_audit import _assembly
 from .static_il import _compressed, _type, decode_il, StaticILLimits, json_evidence_size
+
+
+def _assembly(meta):
+    """Self-contained CLI identity reader; no unpublished audit dependency."""
+    _require(meta.rows[32] == 1, 'COUNT_ASSEMBLY_DEFINITION')
+    row, offset = meta.row(32, 1)
+    public_key, _ = meta.blob(row[6])
+    return {'name': meta.string(row[7]), 'version': '.'.join(map(str, row[1:5])),
+            'culture': meta.string(row[8]), 'flags': row[5], 'metadataOffset': offset,
+            'publicKeySha256': sha256(public_key),
+            'publicKeyToken': hashlib.sha1(public_key).digest()[-8:][::-1].hex() if public_key else ''}
 
 _ID = 'ReLogic.Reflection.IdDictionary'
 _CLOSURE = _ID + '+<>c__DisplayClass15_0'

@@ -36,6 +36,17 @@ def body(key):
 
 
 class IdCountSemanticsTests(unittest.TestCase):
+    def test_public_module_does_not_depend_on_local_audit_tool(self):
+        import os
+        import subprocess
+        import sys
+        env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')}
+        result = subprocess.run([sys.executable, '-c',
+            "import sys; sys.modules['resource_pipeline.source_closure_audit'] = None; "
+            "import resource_pipeline.id_count_semantics; print('standalone')"],
+            env=env, capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout.strip(), 'standalone')
+
     def test_original_three_domains_have_independent_primitive_boundaries(self):
         d=dependency();p=program(game_fixture())
         for name,n,primitive in [('ItemID',13,'Int16'),('TileID',14,'UInt16'),('WallID',15,'UInt16')]:
