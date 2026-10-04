@@ -30,7 +30,7 @@ policy 必须恰好具有以下字段：
 }
 ```
 
-纹理名称是安全相对 PNG 路径；纹理字节必须精确匹配 hash。source 是 x/y/width/height，禁止越过原图。destination 可负数，明确表示被 canvas 裁切的部分。tint 的四个通道均是显式 uint8。支持的唯一图像运算是 8-bit RGBA 逐通道乘色和有序 source-over alpha 合成；不接受自定义 shader、表达式、插件或推断回退。
+纹理名称是安全相对 PNG 路径；纹理字节必须精确匹配 hash。source 是 x/y/width/height，禁止越过原图。destination 可负数，明确表示被 canvas 裁切的部分。tint 的四个通道均是显式 uint8。支持 8-bit RGBA 逐通道乘色；默认采用有序 source-over alpha 合成。layer 可选 `composition: "copy"` 执行无 mask RGBA 拷贝，保留 alpha=0 下的 RGB，用于已明确来源的直接 crop 策略；也可显式写 `"source-over"`。其他值拒绝。不接受自定义 shader、表达式、插件或推断回退。
 
 人物事实按实际 `player-presentation-facts-contract.mjs` 的字段与域验证。永久增强字段名和存档版本范围属于应用现有 save-codec 权限政策，资源不能扩展它们。item 三个角色除 hash 外还执行完整消费结构验证；坏 JSON、空名字、错版本规则、不完整分类域不能借新 hash 通过。
 
@@ -41,7 +41,7 @@ policy 必须恰好具有以下字段：
 - 使用 zlib level 9，无损读回核对。相同压缩字节可 alias；不同段按首次出现顺序 gapless 拼接。
 - 索引元组为 `[offset,length,width,height,cropX,cropY,originalWidth,originalHeight,frameMap]`。
 - choices 按政策行顺序铺入 RGBA PNG，不能用旧 atlas 字节作为新产物。
-- repairs 使用同样的 frame/palette/compression 算法，严格绑定现有 walk key；翻译位移固定为 14 对。
+- repairs 复用 frame crop/dedup，但压缩内容是原始 RGBA，没有 walk 的 palette-size 头或调色板；严格绑定现有 walk key，翻译位移固定为 14 对。
 
 ## 有界性
 

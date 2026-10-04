@@ -281,8 +281,10 @@ class _Renderer:
         result = Image.new('RGBA', tuple(canvas))
         try:
             for layer in layers:
-                _require(_exact(layer, ('texture', 'textureSha256', 'source', 'destination', 'tint'))
-                         and isinstance(layer['texture'], str), 'Invalid explicit player layer')
+                keys = ('texture', 'textureSha256', 'source', 'destination', 'tint')
+                _require((_exact(layer, keys) or _exact(layer, (*keys, 'composition')))
+                         and isinstance(layer['texture'], str)
+                         and layer.get('composition', 'source-over') in ('source-over', 'copy'), 'Invalid explicit player layer')
                 source, dest, tint = layer['source'], layer['destination'], layer['tint']
                 _require(type(source) is list and len(source) == 4 and all(_int(n, 0, 16384) for n in source)
                          and source[2] > 0 and source[3] > 0 and source[2] <= 512 and source[3] <= 512,
@@ -295,7 +297,8 @@ class _Renderer:
                 self.spend(w * h)
                 piece = image.crop((x, y, x + w, y + h))
                 tinted = ImageChops.multiply(piece, Image.new('RGBA', piece.size, tuple(tint)))
-                result.alpha_composite(tinted, tuple(dest))
+                if layer.get('composition', 'source-over') == 'copy': result.paste(tinted, tuple(dest))
+                else: result.alpha_composite(tinted, tuple(dest))
                 piece.close(); tinted.close()
             return result
         except BaseException:
@@ -303,7 +306,7 @@ class _Renderer:
             raise
 
 
-def _pack_frames(renderer, recipe):
+def _pack_frames(renderer, recipe, *, palette_codec=True):
     _require(_exact(recipe, ('key', 'canvas', 'frames')) and isinstance(recipe['key'], str)
              and re.fullmatch(r'[a-z][a-z0-9_:]{0,100}', recipe['key'])
              and type(recipe['frames']) is list and len(recipe['frames']) == 14, 'Invalid explicit walking recipe')
@@ -322,15 +325,19 @@ def _pack_frames(renderer, recipe):
             indices.append(distinct.index(raw))
         rgba = b''.join(distinct)
         _require(len(rgba) <= MAX_TEXTURE_BYTES, 'Expanded player texture exceeds consumer bound')
-        palette, known = [], {}
-        for offset in range(0, len(rgba), 4):
-            pixel = rgba[offset:offset + 4]
-            if pixel not in known:
-                known[pixel] = len(palette); palette.append(pixel)
-                if len(palette) > 256: break
-        if len(palette) <= 256:
-            raw = struct.pack('<H', len(palette)) + b''.join(palette) + bytes(known[rgba[n:n + 4]] for n in range(0, len(rgba), 4))
-        else: raw = b'\0\0' + rgba
+        if not palette_codec:
+            # Repairs have no palette-size header: the consumer inflates exact RGBA.
+            raw = rgba
+        else:
+            palette, known = [], {}
+            for offset in range(0, len(rgba), 4):
+                pixel = rgba[offset:offset + 4]
+                if pixel not in known:
+                    known[pixel] = len(palette); palette.append(pixel)
+                    if len(palette) > 256: break
+            if len(palette) <= 256:
+                raw = struct.pack('<H', len(palette)) + b''.join(palette) + bytes(known[rgba[n:n + 4]] for n in range(0, len(rgba), 4))
+            else: raw = b'\0\0' + rgba
         packed = zlib.compress(raw, 9)
         _require(zlib.decompress(packed) == raw, 'Player compression roundtrip failed')
         return packed, [box[2] - box[0], box[3] - box[1], box[0], box[1], *recipe['canvas'], indices]
@@ -393,7 +400,7 @@ def assemble_player_resources(*, policy: dict, textures: dict[str, bytes], item_
                      and all(type(p) is list and len(p) == 2 and all(_int(n, -512, 512) for n in p) for p in rows), 'Invalid player frame translation')
         repaired = {}
         for recipe in repairs['textures']:
-            packed, (w, h, x, y, ow, oh, frames) = _pack_frames(renderer, recipe)
+            packed, (w, h, x, y, ow, oh, frames) = _pack_frames(renderer, recipe, palette_codec=False)
             _require(recipe['key'] in walk_index and recipe['key'] not in repaired and h <= 56 and y + h <= 56, 'Invalid repaired walking texture')
             encoded = base64.b64encode(packed).decode('ascii')
             _require(len(encoded) <= 512 * 1024, 'Player repair output bound exceeded')

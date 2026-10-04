@@ -1,0 +1,2391 @@
+{
+  "schemaVersion": 1,
+  "status": "PARTIAL",
+  "gameVersion": "1.4.5.8",
+  "sourceSha256": "960a03bff6050cf7be16dfc1a7b19e10fc2c4f8f835a6a3b135a50dd9e6ba2f3",
+  "initializationVerified": false,
+  "complete": false,
+  "publishable": false,
+  "methods": [
+    {
+      "key": "materialItemName",
+      "owner": "Terraria.Lang",
+      "name": "GetItemName",
+      "token": 100663766,
+      "signatureHex": "000112868408",
+      "signatureSha256": "13d2a24c793623a2447402e4e18db11064cb4a9762bb9d6a5759ffae9a1c8a03",
+      "ilSha256": "aca8a5eabcb416f9973a9a543c3900e573c0cdabb68805bd88ba244aee79bd21"
+    },
+    {
+      "key": "mapInitialize",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "Initialize",
+      "token": 100671444,
+      "signatureHex": "000001",
+      "methodToken": "0x06001fd4",
+      "metadataOffset": 7878572,
+      "bodyOffset": 5369396,
+      "codeOffset": 5369408,
+      "codeBytes": 34033,
+      "ilSha256": "23e8aa2bcbeb1e92f7128db73d39ec134d5028ac6a2d5ed68a820990dec689fd",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "1277f98d983363a05a1ddd7f57e270bb4ce23fec81e656ce5e0b3d1e15daec98"
+    },
+    {
+      "key": "materialLinkedAlternates",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_LinkedAlternates",
+      "token": 100668528,
+      "signatureHex": "200002",
+      "signatureSha256": "59a9a8765c535212b9ad71c5c8e1e24ffadbd3331fd04b3bbe1b121ecf6004cc",
+      "ilSha256": "b2ac4739411ce23f254db58f76c802ebdc51a82895dd26e6a0f365c2058f3158"
+    },
+    {
+      "key": "materialAlternates",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Alternates",
+      "token": 100668535,
+      "signatureHex": "20001512790112817c",
+      "signatureSha256": "f1ef0b6558b188b2e4994109c0fac18960ba672d32d5c8f72011117181cbc00e",
+      "ilSha256": "7da26e04a1accaa7a1e45d43d361f7d6275d7a3e362598e39a9306e7f92ec4f7"
+    },
+    {
+      "key": "materialGetStyleOverride",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_GetStyleOverride",
+      "token": 100668571,
+      "signatureHex": "2000129774",
+      "signatureSha256": "e228fa017ffe5b5ae5c3f6a1ef2f8a94ab569e710e2c2f60bdcd6349ef4e90b3",
+      "ilSha256": "10052e70869dcb3f8ab5e534995bde87a664e66b5194c8367ba26b14cf774b16"
+    },
+    {
+      "key": "materialSubTiles",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_SubTiles",
+      "token": 100668573,
+      "signatureHex": "20001512790112817c",
+      "signatureSha256": "f1ef0b6558b188b2e4994109c0fac18960ba672d32d5c8f72011117181cbc00e",
+      "ilSha256": "40ad47d8daddcfe48cd5fce01469377c549dbf59afaca86705417e595f30fddc"
+    },
+    {
+      "key": "materialStyleHorizontal",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleHorizontal",
+      "token": 100668585,
+      "signatureHex": "200002",
+      "signatureSha256": "59a9a8765c535212b9ad71c5c8e1e24ffadbd3331fd04b3bbe1b121ecf6004cc",
+      "ilSha256": "1e2470ec659a6d2031b678ad192ad1e054d526d1ba5a75d06ff4eec59737baed"
+    },
+    {
+      "key": "materialStyle",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Style",
+      "token": 100668587,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "8f7669988e378e1f8e9632cb54f6d823c57bd8d8470ec51e72cba4df2fdae6cf"
+    },
+    {
+      "key": "materialStyleWrapLimit",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleWrapLimit",
+      "token": 100668589,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "23b35c0a6465fc442a4bfdb23b4b426bfaf2f26f55210913423d9d03dacfb22a"
+    },
+    {
+      "key": "materialStyleLineSkip",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleLineSkip",
+      "token": 100668595,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "c47fd323b06829519819123575a0a925552b137869f5f6af70e5864cc82e2a79"
+    },
+    {
+      "key": "materialStyleMultiplier",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleMultiplier",
+      "token": 100668597,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "9157bb222b78777c6c8fe524caafb4222aece4c0eefecf71a4df8ed406f8f6e3"
+    },
+    {
+      "key": "materialWidth",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Width",
+      "token": 100668599,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "1ded1831444bf9e422251bc22fa8a256ac058ddb15bfda50de12916ca83fc470"
+    },
+    {
+      "key": "materialHeight",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Height",
+      "token": 100668601,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "fe9f09ef847cdde9621f725eae0cc1e44130b39341ceded9aaca503228503159"
+    },
+    {
+      "key": "materialRandomStyleRange",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_RandomStyleRange",
+      "token": 100668607,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "ffd683030abcf0e875afe9633bf75d7f4a61e8e232e24679388435d020d35cc8"
+    },
+    {
+      "key": "materialSpecificRandomStyles",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_SpecificRandomStyles",
+      "token": 100668609,
+      "signatureHex": "20001d08",
+      "signatureSha256": "ac81b4c8e3f13d2e86c78c2a7b2d5114ef862ea769e70b5c5dc53d4d72694d62",
+      "ilSha256": "99ee70cb4cd9a288d8b5fe86a38583537ad68fbe52e7ad50959ed75d62bef8ee"
+    },
+    {
+      "key": "materialCoordinateHeights",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinateHeights",
+      "token": 100668613,
+      "signatureHex": "20001d08",
+      "signatureSha256": "ac81b4c8e3f13d2e86c78c2a7b2d5114ef862ea769e70b5c5dc53d4d72694d62",
+      "ilSha256": "3f2803acd5a0dace55127838fe6186daf7d96a57f2376e1638c4eee9ceeef653"
+    },
+    {
+      "key": "materialCoordinateWidth",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinateWidth",
+      "token": 100668617,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "59f355dedb74480403ace4de0462930f62c9b0856c50520d4fe9f81c6edcf3b2"
+    },
+    {
+      "key": "materialCoordinatePadding",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinatePadding",
+      "token": 100668619,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "3a1df215376497b6042a623978d0d7c36e479cbf3f36537d7b76bb079e956e38"
+    },
+    {
+      "key": "materialCoordinatePaddingFix",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinatePaddingFix",
+      "token": 100668621,
+      "signatureHex": "2000119778",
+      "signatureSha256": "5635fa7e8954fa46e097048641cc56415b2fea465437e172da90548a418eefbd",
+      "ilSha256": "ce46554f15cefe7d3595b5b9673c55fad341fdb2d2bc1e0226177cde42603d69"
+    },
+    {
+      "key": "localizedTextValue",
+      "owner": "Terraria.Localization.LocalizedText",
+      "name": "get_Value",
+      "token": 100671576,
+      "signatureHex": "20000e",
+      "methodToken": "0x06002058",
+      "metadataOffset": 7880948,
+      "bodyOffset": 5422184,
+      "codeOffset": 5422196,
+      "codeBytes": 51,
+      "ilSha256": "8e4188b46f642a55e890826cbcffbb41bcd42c8214c63b43f8de108280ea04b6",
+      "signatureOffset": 9659477,
+      "signatureSha256": "df29f5ab2554df47369dafce3bc8630f16eabc3f72c21bbd24c5e73c286f650f",
+      "localSignatureSha256": "63f105c8c664f63a7765aee8a5434263b3c80a73d729b038fab15ac338c782cf"
+    },
+    {
+      "key": "buffName",
+      "owner": "Terraria.Lang",
+      "name": "GetBuffName",
+      "token": 100663770,
+      "signatureHex": "00010e08",
+      "methodToken": "0x060001da",
+      "metadataOffset": 7740440,
+      "bodyOffset": 103740,
+      "codeOffset": 103741,
+      "codeBytes": 13,
+      "ilSha256": "5c9e3c071b0771cb5afcef4d701a447a4fa670eea32c61a7b9bda460b5e22445",
+      "signatureOffset": 9714258,
+      "signatureSha256": "1e0acf33ca250a1c401a2fd9399e8a2da22fecb9d85445b2a5091bbf32627ed7",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "buffDescription",
+      "owner": "Terraria.Lang",
+      "name": "GetBuffDescription",
+      "token": 100663771,
+      "signatureHex": "00010e08",
+      "methodToken": "0x060001db",
+      "metadataOffset": 7740458,
+      "bodyOffset": 103754,
+      "codeOffset": 103755,
+      "codeBytes": 13,
+      "ilSha256": "dae5fcb4e8ad05ae0eee6150b26c300cbfbffb40e6d53c44ea2e720ce5fdd417",
+      "signatureOffset": 9714258,
+      "signatureSha256": "1e0acf33ca250a1c401a2fd9399e8a2da22fecb9d85445b2a5091bbf32627ed7",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "armorShaderForItem",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderDataSet",
+      "name": "GetShaderFromItemId",
+      "token": 100671949,
+      "signatureHex": "200112881408",
+      "methodToken": "0x060021cd",
+      "metadataOffset": 7887662,
+      "bodyOffset": 5492320,
+      "codeOffset": 5492321,
+      "codeBytes": 42,
+      "ilSha256": "7bfdddc9dcc9840b1361834391b11aa28858ea4493b7bb13ae0e089c446dd61a",
+      "signatureOffset": 9861640,
+      "signatureSha256": "bf54e7a42ef73c617e61550d2e8d0f725a5f082ead1fcc147ae96842eb3c1fbd",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "armorShaderId",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderDataSet",
+      "name": "GetShaderIdFromItemId",
+      "token": 100671950,
+      "signatureHex": "20010808",
+      "methodToken": "0x060021ce",
+      "metadataOffset": 7887680,
+      "bodyOffset": 5492363,
+      "codeOffset": 5492364,
+      "codeBytes": 29,
+      "ilSha256": "9f7c232a3e6dbe1dd707484134c7d31e90d95859ed3d5b362818f1dc698a8944",
+      "signatureOffset": 9660536,
+      "signatureSha256": "4b9e7ad1d9b0e78ee86739644805850eaa8d714505339182128f46c75c223327",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "hairShaderId",
+      "owner": "Terraria.Graphics.Shaders.HairShaderDataSet",
+      "name": "GetShaderIdFromItemId",
+      "token": 100671957,
+      "signatureHex": "20010608",
+      "methodToken": "0x060021d5",
+      "metadataOffset": 7887806,
+      "bodyOffset": 5492730,
+      "codeOffset": 5492731,
+      "codeBytes": 29,
+      "ilSha256": "675091dc92a0c05614cdf2a56a4ffc7621c7bc961ed63e8e828c0542efda89eb",
+      "signatureOffset": 9861693,
+      "signatureSha256": "96c0067957bec538b6788207b4024444bb195dbd78cb500d64b05391a9db86b9",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "faceSetsCctor",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": ".cctor",
+      "token": 100683893,
+      "signatureHex": "000001",
+      "methodToken": "0x06005075",
+      "metadataOffset": 8102654,
+      "bodyOffset": 7337368,
+      "codeOffset": 7337380,
+      "codeBytes": 268,
+      "ilSha256": "1c17fe9aa08693f923e752afb7bac6400e6b70468882aa109f7e0ff160affbc4",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "gameMode",
+      "owner": "Terraria.Main",
+      "name": "get_GameMode",
+      "token": 100666441,
+      "signatureHex": "000008",
+      "methodToken": "0x06000c49",
+      "metadataOffset": 7788518,
+      "bodyOffset": 3549556,
+      "codeOffset": 3549557,
+      "codeBytes": 20,
+      "ilSha256": "5c810ceeb05042922504d06f2df5f298bcfe52fc00da80333d64aa59668e5df4",
+      "signatureOffset": 9659835,
+      "signatureSha256": "45baf4ad75fe7f0e9ee25f5277a4be2564e3e8c17c9ef74110cec8649cb95002",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "difficulty",
+      "owner": "Terraria.Main",
+      "name": "get_Difficulty",
+      "token": 100666452,
+      "signatureHex": "00000c",
+      "methodToken": "0x06000c54",
+      "metadataOffset": 7788716,
+      "bodyOffset": 3549936,
+      "codeOffset": 3549948,
+      "codeBytes": 85,
+      "ilSha256": "ba22b5227afd0507b0890f148c2b03302fb797fd2bc8866df56bce4cca1b07a3",
+      "signatureOffset": 9839487,
+      "signatureSha256": "a904ee9128af7efec57ca603efeb0344736ea52b9784fc0611ae775f4f258db1",
+      "localSignatureSha256": "f70b0f1a425fdde5edcb2da1487e739fed4a77cd92c4a050ff1030eb49fa6db0"
+    },
+    {
+      "key": "expertMode",
+      "owner": "Terraria.Main",
+      "name": "get_expertMode",
+      "token": 100666451,
+      "signatureHex": "000002",
+      "methodToken": "0x06000c53",
+      "metadataOffset": 7788698,
+      "bodyOffset": 3549916,
+      "codeOffset": 3549917,
+      "codeBytes": 16,
+      "ilSha256": "7477afc3f320b303e5ffb5c0c3e85f31d4ad3dde87b13c9791e60f65fa2a8310",
+      "signatureOffset": 9661146,
+      "signatureSha256": "65d27a48dfef406db8f5f437423bfa5f9c83d77bfc12f8a14b8ce3ede5892fb5",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "masterMode",
+      "owner": "Terraria.Main",
+      "name": "get_masterMode",
+      "token": 100666450,
+      "signatureHex": "000002",
+      "methodToken": "0x06000c52",
+      "metadataOffset": 7788680,
+      "bodyOffset": 3549899,
+      "codeOffset": 3549900,
+      "codeBytes": 16,
+      "ilSha256": "dc080719d1bebf597199da8b46afad1f2e48094d8f602163b5a79016ec96c696",
+      "signatureOffset": 9661146,
+      "signatureSha256": "65d27a48dfef406db8f5f437423bfa5f9c83d77bfc12f8a14b8ce3ede5892fb5",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "mechdusa",
+      "owner": "Terraria.GameContent.SpecialSeedFeatures",
+      "name": "get_Mechdusa",
+      "token": 100672693,
+      "signatureHex": "000002",
+      "methodToken": "0x060024b5",
+      "metadataOffset": 7901054,
+      "bodyOffset": 5600565,
+      "codeOffset": 5600566,
+      "codeBytes": 15,
+      "ilSha256": "c6c49498419d3e4c2a6c57b669beb4d1eecc6660158006f34ede2cfcf1f99fab",
+      "signatureOffset": 9661146,
+      "signatureSha256": "65d27a48dfef406db8f5f437423bfa5f9c83d77bfc12f8a14b8ce3ede5892fb5",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "activeCulture",
+      "owner": "Terraria.Localization.LanguageManager",
+      "name": "get_ActiveCulture",
+      "token": 100671538,
+      "signatureHex": "2000128670",
+      "methodToken": "0x06002032",
+      "metadataOffset": 7880264,
+      "bodyOffset": 5418345,
+      "codeOffset": 5418346,
+      "codeBytes": 7,
+      "ilSha256": "c9736867bbbfa4ef9be0117a091818da45339b046fa5dcc356cd449069f1c51b",
+      "signatureOffset": 9860256,
+      "signatureSha256": "8a5c6c497867cc3312305eaf747a4a6d3658f7a1b9c699261f92f9252b794ae1",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "cultureName",
+      "owner": "Terraria.Localization.GameCulture",
+      "name": "get_Name",
+      "token": 100671506,
+      "signatureHex": "20000e",
+      "methodToken": "0x06002012",
+      "metadataOffset": 7879688,
+      "bodyOffset": 5417548,
+      "codeOffset": 5417549,
+      "codeBytes": 12,
+      "ilSha256": "c90e4fe6afb15dfd976a62f767f4562a548074d890b9621282035dca267842a0",
+      "signatureOffset": 9659477,
+      "signatureSha256": "df29f5ab2554df47369dafce3bc8630f16eabc3f72c21bbd24c5e73c286f650f",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "itemVariant",
+      "owner": "Terraria.Item",
+      "name": "get_Variant",
+      "token": 100665168,
+      "signatureHex": "2000129298",
+      "methodToken": "0x06000750",
+      "metadataOffset": 7765604,
+      "bodyOffset": 2643353,
+      "codeOffset": 2643354,
+      "codeBytes": 7,
+      "ilSha256": "c275ebd3d737abe11d589aeb35efe8f0d7a2d251bf3feb000b3da242f166ea94",
+      "signatureOffset": 9843961,
+      "signatureSha256": "731d00697e273f101fadd142b4e057082e86a8ea2be98949b978d9c50053bf41",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "programCctor",
+      "owner": "Terraria.Program",
+      "name": ".cctor",
+      "token": 100666426,
+      "signatureHex": "000001",
+      "methodToken": "0x06000c3a",
+      "metadataOffset": 7788248,
+      "bodyOffset": 3549184,
+      "codeOffset": 3549185,
+      "codeBytes": 44,
+      "ilSha256": "b266d99d967124723dc9b010ae943701f8956d3d8538e71f7d5a298db5d5414c",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "mainCctor",
+      "owner": "Terraria.Main",
+      "name": ".cctor",
+      "token": 100667289,
+      "signatureHex": "000001",
+      "methodToken": "0x06000f99",
+      "metadataOffset": 7803782,
+      "bodyOffset": 4300320,
+      "codeOffset": 4300332,
+      "codeBytes": 8697,
+      "ilSha256": "70cd1d5bc09952a87646e648bf1d1f83907015e1498289166c85b53ed216d0a9",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "60873dc3be4a117befc0d61448d086991d819023e48057db617721233f200e1e"
+    },
+    {
+      "key": "language",
+      "owner": "Terraria.Localization.LanguageManager",
+      "name": "SetLanguage",
+      "token": 100671543,
+      "signatureHex": "2001010e",
+      "methodToken": "0x06002037",
+      "metadataOffset": 7880354,
+      "bodyOffset": 5418528,
+      "codeOffset": 5418540,
+      "codeBytes": 15,
+      "ilSha256": "6707162bb4fd8ac180555fe6dc41bab620682036f334a72a3e9581bdd8171924",
+      "signatureOffset": 9658449,
+      "signatureSha256": "c65dc7d303e94729245de0fa4db4b80ac687af6d0bb38c5c884bc9c11f01e005",
+      "localSignatureSha256": "96e02a01a50de4cced3d3dfe2b947060d9e662f3cd9e36e78086e914bcff9459"
+    },
+    {
+      "key": "legacyLanguage",
+      "owner": "Terraria.Lang",
+      "name": "InitializeLegacyLocalization",
+      "token": 100663791,
+      "signatureHex": "000001",
+      "methodToken": "0x060001ef",
+      "metadataOffset": 7740818,
+      "bodyOffset": 105360,
+      "codeOffset": 105372,
+      "codeBytes": 972,
+      "ilSha256": "8963a0a8875c44d97ed275cba9b4e28173a2bbd0bbf31e464b362facbaf5441d",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "b96e9969da2b52766503a5a3a9ba83d5d91fc6f5f4cd9bbdc2cd4551027f9545"
+    },
+    {
+      "key": "playerCtor",
+      "owner": "Terraria.Player",
+      "name": ".ctor",
+      "token": 100666241,
+      "signatureHex": "200001",
+      "methodToken": "0x06000b81",
+      "metadataOffset": 7784918,
+      "bodyOffset": 3496796,
+      "codeOffset": 3496808,
+      "codeBytes": 2423,
+      "ilSha256": "639d754943bc758f40ccf62eafb9de0f8b474aeb3072aff737fdc0f36469dc40",
+      "signatureOffset": 9658434,
+      "signatureSha256": "0c9373898d2dd1c85902837a9e979cb88484e2548a008ad2b2176cc7119d09df",
+      "localSignatureSha256": "d7e15f3ca5cbcdf6ce3f359fffec1edd84f274a2c02979ee55ede841d4a29d37"
+    },
+    {
+      "key": "randomCtor",
+      "owner": "Terraria.Utilities.UnifiedRandom",
+      "name": ".ctor",
+      "token": 100669660,
+      "signatureHex": "20010108",
+      "methodToken": "0x060018dc",
+      "metadataOffset": 7846460,
+      "bodyOffset": 5205527,
+      "codeOffset": 5205528,
+      "codeBytes": 27,
+      "ilSha256": "050c3f07595470625e95af910645890279059aeb252c3c0cecba5d8aa37e1a94",
+      "signatureOffset": 9658438,
+      "signatureSha256": "c889396c66b535112cb33472b6ecf61ad5f09860a1ea642fb8c31a4ed004296a",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "samples",
+      "owner": "Terraria.ID.ContentSamples",
+      "name": "Initialize",
+      "token": 100671626,
+      "signatureHex": "000001",
+      "methodToken": "0x0600208a",
+      "metadataOffset": 7881848,
+      "bodyOffset": 5425116,
+      "codeOffset": 5425128,
+      "codeBytes": 454,
+      "ilSha256": "b1dd6ce105006fb7ce4e21d51dafc6bf29de4312cc3236ad9225409dee0f7800",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "3ca3f5eef5eb23248e379d27e8802400af95c400255eddeb93da025c87dcef48"
+    },
+    {
+      "key": "tiles",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "Initialize",
+      "token": 100668639,
+      "signatureHex": "000001",
+      "methodToken": "0x060014df",
+      "metadataOffset": 7828082,
+      "bodyOffset": 5004032,
+      "codeOffset": 5004044,
+      "codeBytes": 39610,
+      "ilSha256": "ed1fb826e06b794706cb2bd35a120de7e0eef5bd2bbec2fd3b9d6582ff96b7ab",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "d3142de35147dbc57a297b62d4b82df6b3b31b35e730ed8905901c8dcdaee9d0"
+    },
+    {
+      "key": "researchInit",
+      "owner": "Terraria.GameContent.Creative.CreativeItemSacrificesCatalog",
+      "name": "Initialize",
+      "token": 100673892,
+      "signatureHex": "200001",
+      "methodToken": "0x06002964",
+      "metadataOffset": 7922636,
+      "bodyOffset": 5788156,
+      "codeOffset": 5788168,
+      "codeBytes": 909,
+      "ilSha256": "342bea6e446869d68471fd2771c1922ccad80e4b13970a2bcc28023ba8a893ec",
+      "signatureOffset": 9658434,
+      "signatureSha256": "0c9373898d2dd1c85902837a9e979cb88484e2548a008ad2b2176cc7119d09df",
+      "localSignatureSha256": "64daffd83a4589af3646cf8dc3e835e867aebaf2810864bdd3c866c7a8d9951d"
+    },
+    {
+      "key": "tileData1",
+      "owner": "Terraria.Main",
+      "name": "Initialize_TileAndNPCData1",
+      "token": 100666599,
+      "signatureHex": "000001",
+      "methodToken": "0x06000ce7",
+      "metadataOffset": 7791362,
+      "bodyOffset": 3601040,
+      "codeOffset": 3601052,
+      "codeBytes": 25063,
+      "ilSha256": "d721c4eb002f72239b7b63a65d998cfcdcdd9852d78bb1a9dfce1f0a56d1ec35",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "15b5ebf934114f7ab243535746657743c8fdaa26662427e0ede4484773e438fe"
+    },
+    {
+      "key": "tileData2",
+      "owner": "Terraria.Main",
+      "name": "Initialize_TileAndNPCData2",
+      "token": 100666597,
+      "signatureHex": "000001",
+      "methodToken": "0x06000ce5",
+      "metadataOffset": 7791326,
+      "bodyOffset": 3583160,
+      "codeOffset": 3583172,
+      "codeBytes": 17842,
+      "ilSha256": "7e29a86d8794ab337f51fba799135a278dc3fd5c55e908d3b8a7ca74ca2a8a57",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "9eee39abf06232e9c4781cdf4f23a50a7df6a4382794855f99d6972c8e9af219"
+    },
+    {
+      "key": "itemsInit",
+      "owner": "Terraria.Main",
+      "name": "Initialize_Items",
+      "token": 100666596,
+      "signatureHex": "000001",
+      "methodToken": "0x06000ce4",
+      "metadataOffset": 7791308,
+      "bodyOffset": 3582576,
+      "codeOffset": 3582588,
+      "codeBytes": 569,
+      "ilSha256": "1fa6d84f0214e214d2bed5c8c9d3c410cea83e99f89edf7230ece619f8f067c1",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "1ed51e53743250afce4f388bcbb6d501f9656eb0843fd71711a0d51cbc07c0e9"
+    },
+    {
+      "key": "projectileCtor",
+      "owner": "Terraria.Projectile",
+      "name": ".ctor",
+      "token": 100664533,
+      "signatureHex": "200001",
+      "methodToken": "0x060004d5",
+      "metadataOffset": 7754174,
+      "bodyOffset": 1265784,
+      "codeOffset": 1265796,
+      "codeBytes": 239,
+      "ilSha256": "24dee669b543bbb3bc546cb6075e3ebddba24bec19d11c7c39713381d7229afc",
+      "signatureOffset": 9658434,
+      "signatureSha256": "0c9373898d2dd1c85902837a9e979cb88484e2548a008ad2b2176cc7119d09df",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "projectileDefaults",
+      "owner": "Terraria.Projectile",
+      "name": "SetDefaults",
+      "token": 100664183,
+      "signatureHex": "20010108",
+      "methodToken": "0x06000377",
+      "metadataOffset": 7747874,
+      "bodyOffset": 294388,
+      "codeOffset": 294400,
+      "codeBytes": 75578,
+      "ilSha256": "a83414c660110073ac4189bf3b9bcd613a7ec929e54e2edc3c6bb49e4fd3532a",
+      "signatureOffset": 9658438,
+      "signatureSha256": "c889396c66b535112cb33472b6ecf61ad5f09860a1ea642fb8c31a4ed004296a",
+      "localSignatureSha256": "5f8df7fdcf2d60074a3d0a85b1db3fa7e04ae1f185263efdf3ceb2918e0bfd9e"
+    },
+    {
+      "key": "recipeGroups",
+      "owner": "Terraria.Recipe",
+      "name": "SetupRecipeGroups",
+      "token": 100664589,
+      "signatureHex": "000001",
+      "methodToken": "0x0600050d",
+      "metadataOffset": 7755182,
+      "bodyOffset": 1271220,
+      "codeOffset": 1271232,
+      "codeBytes": 1424,
+      "ilSha256": "a07459633a30f5852d3d442dc314155128a93d39fdbc9c1336e8866e1fcd9ce6",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "armorSets",
+      "owner": "Terraria.DataStructures.ArmorSetBonuses",
+      "name": "Initialize",
+      "token": 100678000,
+      "signatureHex": "000001",
+      "methodToken": "0x06003970",
+      "metadataOffset": 7996580,
+      "bodyOffset": 6620208,
+      "codeOffset": 6620220,
+      "codeBytes": 3539,
+      "ilSha256": "75c9a0cbb68084dee300c19c2e23c638e87b3325004592994addb652634af2a8",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "armorLookup",
+      "owner": "Terraria.DataStructures.ArmorSetBonuses",
+      "name": "BuildLookup",
+      "token": 100678001,
+      "signatureHex": "000001",
+      "methodToken": "0x06003971",
+      "metadataOffset": 7996598,
+      "bodyOffset": 6623760,
+      "codeOffset": 6623772,
+      "codeBytes": 345,
+      "ilSha256": "7627d44db67e7845c8ab2769f710163f6492285cefb12be01b35cb6daf733823",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "ec494022015e5fb8a043e3dface9317edb408dbacf25e90850da394fcef8c68a"
+    },
+    {
+      "key": "itemPost",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "PostSetupContent",
+      "token": 100681134,
+      "signatureHex": "000001",
+      "methodToken": "0x060045ae",
+      "metadataOffset": 8052992,
+      "bodyOffset": 7105856,
+      "codeOffset": 7105868,
+      "codeBytes": 103,
+      "ilSha256": "133fcda5b6d8621133d6f001a49a249d658513eb06a14764cb205bab53b551bb",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "545e0750b09605987f819c311cc1e70d1211711e61b1c90c5426df4c22dbd92a"
+    },
+    {
+      "key": "tilePost",
+      "owner": "Terraria.ID.TileID+Sets",
+      "name": "PostSetupContent",
+      "token": 100681149,
+      "signatureHex": "000001",
+      "methodToken": "0x060045bd",
+      "metadataOffset": 8053262,
+      "bodyOffset": 7202504,
+      "codeOffset": 7202516,
+      "codeBytes": 67,
+      "ilSha256": "8fed088d227505eb8c9f3bfe1b83ee23442bf5c7075de674cae7ec451135b606",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "36654740d83ff67fdf1f105b2e0dff284deb34aa495928a1087ff030ec06b2ff"
+    },
+    {
+      "key": "armorDyes",
+      "owner": "Terraria.Initializers.DyeInitializer",
+      "name": "LoadArmorDyes",
+      "token": 100669004,
+      "signatureHex": "000001",
+      "methodToken": "0x0600164c",
+      "metadataOffset": 7834652,
+      "bodyOffset": 5135984,
+      "codeOffset": 5135996,
+      "codeBytes": 3973,
+      "ilSha256": "38257d27e7234e5155ae689b9215761749dfa422de128af3a7a0d86aa6407439",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "a691263c1f0fba4bbac1a1c4c879641cda0f06740b441f9e94a2235e46ceb90a"
+    },
+    {
+      "key": "hairDyes",
+      "owner": "Terraria.Initializers.DyeInitializer",
+      "name": "LoadHairDyes",
+      "token": 100669005,
+      "signatureHex": "000001",
+      "methodToken": "0x0600164d",
+      "metadataOffset": 7834670,
+      "bodyOffset": 5139972,
+      "codeOffset": 5139984,
+      "codeBytes": 69,
+      "ilSha256": "afd787fffee9602b1ea482b9bf111fbc22b1d6ef52c74cbbc5d9dde830fe012c",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "a691263c1f0fba4bbac1a1c4c879641cda0f06740b441f9e94a2235e46ceb90a"
+    },
+    {
+      "key": "dyeIds",
+      "owner": "Terraria.ID.ContentSamples+DyeShaderIDs",
+      "name": "Initialize",
+      "token": 100681053,
+      "signatureHex": "000001",
+      "methodToken": "0x0600455d",
+      "metadataOffset": 8051534,
+      "bodyOffset": 7094144,
+      "codeOffset": 7094145,
+      "codeBytes": 41,
+      "ilSha256": "bd2d1f50f465457972cd55543b640b80f240918daf1c4b7c15b38fc4b9091250",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "recipeCtor",
+      "owner": "Terraria.Recipe",
+      "name": ".ctor",
+      "token": 100664568,
+      "signatureHex": "200001",
+      "methodToken": "0x060004f8",
+      "metadataOffset": 7754804,
+      "bodyOffset": 1269200,
+      "codeOffset": 1269212,
+      "codeBytes": 111,
+      "ilSha256": "c4ffa4ade7c777a73a39750689b0599849445e6115a62a1f0101b7b637e36e16",
+      "signatureOffset": 9658434,
+      "signatureSha256": "0c9373898d2dd1c85902837a9e979cb88484e2548a008ad2b2176cc7119d09df",
+      "localSignatureSha256": "36654740d83ff67fdf1f105b2e0dff284deb34aa495928a1087ff030ec06b2ff"
+    },
+    {
+      "key": "recipes",
+      "owner": "Terraria.Recipe",
+      "name": "SetupRecipes",
+      "token": 100664595,
+      "signatureHex": "000001",
+      "methodToken": "0x06000513",
+      "metadataOffset": 7755290,
+      "bodyOffset": 1273084,
+      "codeOffset": 1273096,
+      "codeBytes": 240426,
+      "ilSha256": "46c6c88e68a4830cbcc6bcadfc69b93e26aed63928bae125dc983c2b547d42a0",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "111fd06d1b9395ab0e482a27575267d30ea35d2d576d5c613ed785bec4687373"
+    },
+    {
+      "key": "fixItems",
+      "owner": "Terraria.ID.ContentSamples",
+      "name": "FixItemsAfterRecipesAreAdded",
+      "token": 100671630,
+      "signatureHex": "000001",
+      "methodToken": "0x0600208e",
+      "metadataOffset": 7881920,
+      "bodyOffset": 5425920,
+      "codeOffset": 5425932,
+      "codeBytes": 60,
+      "ilSha256": "c0b28f4e7198c8e760a1a09e6976acc8c7a893b2086ebc438b261ef3560a1602",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "c6c4fb1570e05c04d6848363960572d1a5cbccf54ff2806a557e1c6485552892"
+    },
+    {
+      "key": "itemName",
+      "owner": "Terraria.Item",
+      "name": "get_Name",
+      "token": 100665157,
+      "signatureHex": "20000e",
+      "methodToken": "0x06000745",
+      "metadataOffset": 7765406,
+      "bodyOffset": 2642940,
+      "codeOffset": 2642941,
+      "codeBytes": 22,
+      "ilSha256": "ee4a9e440ed03281c1af49802f9898e12913201cf8afb3602b2d5475b5bccff9",
+      "signatureOffset": 9659477,
+      "signatureSha256": "df29f5ab2554df47369dafce3bc8630f16eabc3f72c21bbd24c5e73c286f650f",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "researchCap",
+      "owner": "Terraria.GameContent.Creative.CreativeItemSacrificesCatalog",
+      "name": "TryGetSacrificeCountCapToUnlockInfiniteItems",
+      "token": 100673893,
+      "signatureHex": "200202081008",
+      "methodToken": "0x06002965",
+      "metadataOffset": 7922654,
+      "bodyOffset": 5789080,
+      "codeOffset": 5789092,
+      "codeBytes": 32,
+      "ilSha256": "7fbd6c91d86c16a1e46461beb49b66668e7b714acdae78866c3087315fcdec76",
+      "signatureOffset": 9844135,
+      "signatureSha256": "e34255924d69caad8facbbf294a673699ac829a7746194db92ac18993fb7bb3e",
+      "localSignatureSha256": "36654740d83ff67fdf1f105b2e0dff284deb34aa495928a1087ff030ec06b2ff"
+    },
+    {
+      "key": "itemIdCctor",
+      "owner": "Terraria.ID.ItemID",
+      "name": ".cctor",
+      "token": 100671711,
+      "signatureHex": "000001",
+      "methodToken": "0x060020df",
+      "metadataOffset": 7883378,
+      "bodyOffset": 5456037,
+      "codeOffset": 5456038,
+      "codeBytes": 21,
+      "ilSha256": "b20114f00d5aadcd7cda2fbedfa8377d78fc08650d961ae0a4a4732457356b15",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "itemSetsCctor",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": ".cctor",
+      "token": 100681136,
+      "signatureHex": "000001",
+      "methodToken": "0x060045b0",
+      "metadataOffset": 8053028,
+      "bodyOffset": 7105972,
+      "codeOffset": 7105984,
+      "codeBytes": 22968,
+      "ilSha256": "835557282cef71fbf78f51f09de954b09ccb3f5604cbd2791a11164b0622db69",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "493afeca02b03cdb370937a2f8502696aaab49031fa7a4d5863df2501ce91d83"
+    },
+    {
+      "key": "groupsCctor",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": ".cctor",
+      "token": 100682911,
+      "signatureHex": "000001",
+      "methodToken": "0x06004c9f",
+      "metadataOffset": 8084978,
+      "bodyOffset": 7283676,
+      "codeOffset": 7283688,
+      "codeBytes": 246,
+      "ilSha256": "6119c0e5d1558fc746611e65d43daae63245597333aa7e7bd2a56b9dd27c9497",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "key": "poolsCctor",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": ".cctor",
+      "token": 100682909,
+      "signatureHex": "000001",
+      "methodToken": "0x06004c9d",
+      "metadataOffset": 8084942,
+      "bodyOffset": 7283476,
+      "codeOffset": 7283488,
+      "codeBytes": 185,
+      "ilSha256": "e595213c9306a08fa39006a28500f169bef535410924b766c061426f9031f07f",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "fields": [
+    {
+      "key": "localizedText.EnglishValue",
+      "owner": "Terraria.Localization.LocalizedText",
+      "name": "<EnglishValue>k__BackingField",
+      "token": 67114913,
+      "signatureHex": "060e",
+      "signatureSha256": "89c0c2d74467289c8bf954f4cde47f4f794bcf8e6ee65e19cd0b275e47aca3ec"
+    },
+    {
+      "key": "sets.Deprecated",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "Deprecated",
+      "token": 67138169,
+      "signatureHex": "061d02",
+      "metadataOffset": 7704306,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "localizedText.Key",
+      "owner": "Terraria.Localization.LocalizedText",
+      "name": "Key",
+      "token": 67114911,
+      "signatureHex": "060e",
+      "metadataOffset": 7471726,
+      "signatureOffset": 9659872,
+      "signatureSha256": "89c0c2d74467289c8bf954f4cde47f4f794bcf8e6ee65e19cd0b275e47aca3ec"
+    },
+    {
+      "key": "wallId.Count",
+      "owner": "Terraria.ID.WallID",
+      "name": "Count",
+      "token": 67126552,
+      "signatureHex": "0607",
+      "metadataOffset": 7588136,
+      "signatureOffset": 9674777,
+      "signatureSha256": "4e399d0536e9eb556ea05e7c19f52034fc44dc7eea2f3b5af2da5336ca9c9cf1"
+    },
+    {
+      "key": "map.tileOptions",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "tileOptionCounts",
+      "token": 67114862,
+      "signatureHex": "061d08",
+      "metadataOffset": 7471236,
+      "signatureOffset": 9825984,
+      "signatureSha256": "06e25f63357fc116270b45d61f244f668c462ff88a69763d6df9fb9c1b9cf865"
+    },
+    {
+      "key": "map.wallOptions",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "wallOptionCounts",
+      "token": 67114863,
+      "signatureHex": "061d08",
+      "metadataOffset": 7471246,
+      "signatureOffset": 9825984,
+      "signatureSha256": "06e25f63357fc116270b45d61f244f668c462ff88a69763d6df9fb9c1b9cf865"
+    },
+    {
+      "key": "map.tileLookup",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "tileLookup",
+      "token": 67114864,
+      "signatureHex": "061d07",
+      "metadataOffset": 7471256,
+      "signatureOffset": 9829784,
+      "signatureSha256": "b878df024ee6943cf99926fea0c53374872f3c020e5975baa91b988e4a166f58"
+    },
+    {
+      "key": "map.wallLookup",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "wallLookup",
+      "token": 67114865,
+      "signatureHex": "061d07",
+      "metadataOffset": 7471266,
+      "signatureOffset": 9829784,
+      "signatureSha256": "b878df024ee6943cf99926fea0c53374872f3c020e5975baa91b988e4a166f58"
+    },
+    {
+      "key": "map.colors",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "colorLookup",
+      "token": 67114873,
+      "signatureHex": "061d118081",
+      "metadataOffset": 7471346,
+      "signatureOffset": 9826021,
+      "signatureSha256": "0a9164a81127ad146455e5f127dfeece5ce95056fe5823b7696271a1517e0579"
+    },
+    {
+      "key": "lang.mapLegend",
+      "owner": "Terraria.Lang",
+      "name": "_mapLegendCache",
+      "token": 67109221,
+      "signatureHex": "061d128684",
+      "metadataOffset": 7414826,
+      "signatureOffset": 9662593,
+      "signatureSha256": "59da67a6a5743ffc5cc74f98fdc0f8eafe054e7b8793308c23056b8435b9d247"
+    },
+    {
+      "key": "material.frameImportant",
+      "owner": "Terraria.Main",
+      "name": "tileFrameImportant",
+      "token": 67112081,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.tileSolid",
+      "owner": "Terraria.Main",
+      "name": "tileSolid",
+      "token": 67112069,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.tileSolidTop",
+      "owner": "Terraria.Main",
+      "name": "tileSolidTop",
+      "token": 67112068,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.tileSand",
+      "owner": "Terraria.Main",
+      "name": "tileSand",
+      "token": 67112161,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.placeStyle",
+      "owner": "Terraria.Item",
+      "name": "placeStyle",
+      "token": 67110059,
+      "signatureHex": "0608",
+      "signatureSha256": "557c754d26e2667287367a856ea5fcd584f35ab796d24a6a875d1648a4637d23"
+    },
+    {
+      "key": "tileId.Count",
+      "owner": "Terraria.ID.TileID",
+      "name": "Count",
+      "token": 67128121,
+      "signatureHex": "0607",
+      "signatureSha256": "4e399d0536e9eb556ea05e7c19f52034fc44dc7eea2f3b5af2da5336ca9c9cf1"
+    },
+    {
+      "key": "material.registry",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_data",
+      "token": 67113101,
+      "signatureHex": "061512790112817c",
+      "signatureSha256": "e3cc056a4d2e007d5f2c851b86cab4c2988a365a6ea33327c44e55e4174d9300"
+    },
+    {
+      "key": "material.baseObject",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_baseObject",
+      "token": 67113102,
+      "signatureHex": "0612817c",
+      "signatureSha256": "05420b5a63709098961e22deaee8dca876434d096eb24108cdd7319045c9ef73"
+    },
+    {
+      "key": "material._alternates",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_alternates",
+      "token": 67113079,
+      "signatureHex": "06128188",
+      "signatureSha256": "2ee1ed938b999568dae3a538ce790f65a1e8692d515b9057b355f7637a7d1861"
+    },
+    {
+      "key": "material._placementHooks",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_placementHooks",
+      "token": 67113084,
+      "signatureHex": "061281a0",
+      "signatureSha256": "10272135a51595b52689ff28ca0ff86b4ccd049ac403987ba0986f0bce774fb8"
+    },
+    {
+      "key": "material._subTiles",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_subTiles",
+      "token": 67113085,
+      "signatureHex": "0612819c",
+      "signatureSha256": "269f491f24f7a5d7f1c6930dcb87636faec4b36ab7db0e2d520adaa9854531d5"
+    },
+    {
+      "key": "material._tileObjectStyle",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_tileObjectStyle",
+      "token": 67113087,
+      "signatureHex": "061281a4",
+      "signatureSha256": "a53502dc3e6f9d01892aefe6ccb0eca3fe5ff023f76e39b2fd9fd0f209a0afb7"
+    },
+    {
+      "key": "material._tileObjectBase",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_tileObjectBase",
+      "token": 67113088,
+      "signatureHex": "0612818c",
+      "signatureSha256": "8c349eb20a003d3d2d93fa85b6b192ddeabdf0ef0046e80e26a268b225b74d2a"
+    },
+    {
+      "key": "material._tileObjectCoords",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_tileObjectCoords",
+      "token": 67113089,
+      "signatureHex": "061281a8",
+      "signatureSha256": "f48f5beb177c16df9290d2a5895c1da2fbbcb882e07d40030e2c54f792e96896"
+    },
+    {
+      "key": "material.point16X",
+      "owner": "Terraria.DataStructures.Point16",
+      "name": "X",
+      "token": 67133244,
+      "signatureHex": "0606",
+      "signatureSha256": "53bd9133146631a2a2a89188f7d799e4ab85b473b7e927dd8b7782d91fe4ee0c"
+    },
+    {
+      "key": "material.point16Y",
+      "owner": "Terraria.DataStructures.Point16",
+      "name": "Y",
+      "token": 67133245,
+      "signatureHex": "0606",
+      "signatureSha256": "53bd9133146631a2a2a89188f7d799e4ab85b473b7e927dd8b7782d91fe4ee0c"
+    },
+    {
+      "key": "lang.prefix",
+      "owner": "Terraria.Lang",
+      "name": "prefix",
+      "token": 67109220,
+      "signatureHex": "061d128684",
+      "metadataOffset": 7414816,
+      "signatureOffset": 9662593,
+      "signatureSha256": "59da67a6a5743ffc5cc74f98fdc0f8eafe054e7b8793308c23056b8435b9d247"
+    },
+    {
+      "key": "buffId.Count",
+      "owner": "Terraria.ID.BuffID",
+      "name": "Count",
+      "token": 67118231,
+      "signatureHex": "0608",
+      "metadataOffset": 7504926,
+      "signatureOffset": 9660347,
+      "signatureSha256": "557c754d26e2667287367a856ea5fcd584f35ab796d24a6a875d1648a4637d23"
+    },
+    {
+      "key": "faceId.Count",
+      "owner": "Terraria.ID.ArmorIDs+Face",
+      "name": "Count",
+      "token": 67137938,
+      "signatureHex": "0604",
+      "metadataOffset": 7701996,
+      "signatureOffset": 9808084,
+      "signatureSha256": "5ea6d85d0fbe5fe428c0ac095c6c1b2bc3e58a8c4f6f58c445e5b1b5e9332d35"
+    },
+    {
+      "key": "shader.armor",
+      "owner": "Terraria.Graphics.Shaders.GameShaders",
+      "name": "Armor",
+      "token": 67128397,
+      "signatureHex": "06128800",
+      "metadataOffset": 7606586,
+      "signatureOffset": 9830383,
+      "signatureSha256": "aca0467f6d7f82440d51b936b704cbc3070a3b3085ed59dbe327be82e8a05bbd"
+    },
+    {
+      "key": "shader.hair",
+      "owner": "Terraria.Graphics.Shaders.GameShaders",
+      "name": "Hair",
+      "token": 67128398,
+      "signatureHex": "06128804",
+      "metadataOffset": 7606596,
+      "signatureOffset": 9830388,
+      "signatureSha256": "af879a68e3e12b9a1ee103b3a29484e464574638a781bc657ff44f3eb1a71fd9"
+    },
+    {
+      "key": "hair.shaderCount",
+      "owner": "Terraria.Graphics.Shaders.HairShaderDataSet",
+      "name": "_shaderDataCount",
+      "token": 67128295,
+      "signatureHex": "0605",
+      "metadataOffset": 7605566,
+      "signatureOffset": 9726573,
+      "signatureSha256": "678feb3f747a2d2f550e94426e93e05c4701e4ee09543ff89eb06986772c261c"
+    },
+    {
+      "key": "shader.pass",
+      "owner": "Terraria.Graphics.Shaders.ShaderData",
+      "name": "_passName",
+      "token": 67128401,
+      "signatureHex": "060e",
+      "metadataOffset": 7606626,
+      "signatureOffset": 9659872,
+      "signatureSha256": "89c0c2d74467289c8bf954f4cde47f4f794bcf8e6ee65e19cd0b275e47aca3ec"
+    },
+    {
+      "key": "shader.color",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderData",
+      "name": "_uColor",
+      "token": 67128376,
+      "signatureHex": "061180b9",
+      "metadataOffset": 7606376,
+      "signatureOffset": 9742849,
+      "signatureSha256": "5113a8ab6596771d19bfdd6f8f5fe90bb656e695bb616391a806ebcf98f3d867"
+    },
+    {
+      "key": "shader.secondaryColor",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderData",
+      "name": "_uSecondaryColor",
+      "token": 67128377,
+      "signatureHex": "061180b9",
+      "metadataOffset": 7606386,
+      "signatureOffset": 9742849,
+      "signatureSha256": "5113a8ab6596771d19bfdd6f8f5fe90bb656e695bb616391a806ebcf98f3d867"
+    },
+    {
+      "key": "shader.saturation",
+      "owner": "Terraria.Graphics.Shaders.ArmorShaderData",
+      "name": "_uSaturation",
+      "token": 67128378,
+      "signatureHex": "060c",
+      "metadataOffset": 7606396,
+      "signatureOffset": 9660392,
+      "signatureSha256": "24425aff3642fda4c9e82267f9f9efc0ef3a539bb3c6234769caa793f206e966"
+    },
+    {
+      "key": "main.debuff",
+      "owner": "Terraria.Main",
+      "name": "debuff",
+      "token": 67111714,
+      "signatureHex": "061d02",
+      "metadataOffset": 7439756,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.PreventHairDraw",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "PreventHairDraw",
+      "token": 67140583,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728446,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.OverrideHelmet",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "OverrideHelmet",
+      "token": 67140584,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728456,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceUnderHairLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceUnderHairLayer",
+      "token": 67140585,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728466,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceMaskLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceMaskLayer",
+      "token": 67140586,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728476,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceFlowerLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceFlowerLayer",
+      "token": 67140587,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728486,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "faceSets.DrawInFaceHeadLayer",
+      "owner": "Terraria.ID.ArmorIDs+Face+Sets",
+      "name": "DrawInFaceHeadLayer",
+      "token": 67140588,
+      "signatureHex": "061d02",
+      "metadataOffset": 7728496,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "item.damage",
+      "owner": "Terraria.Item",
+      "name": "damage",
+      "token": 67110060,
+      "signatureHex": "0608",
+      "metadataOffset": 7423216
+    },
+    {
+      "key": "item.useAnimation",
+      "owner": "Terraria.Item",
+      "name": "useAnimation",
+      "token": 67110049,
+      "signatureHex": "0608",
+      "metadataOffset": 7423106
+    },
+    {
+      "key": "item.mana",
+      "owner": "Terraria.Item",
+      "name": "mana",
+      "token": 67110104,
+      "signatureHex": "0608",
+      "metadataOffset": 7423656
+    },
+    {
+      "key": "item.knockBack",
+      "owner": "Terraria.Item",
+      "name": "knockBack",
+      "token": 67110061,
+      "signatureHex": "060c",
+      "metadataOffset": 7423226
+    },
+    {
+      "key": "item.accessory",
+      "owner": "Terraria.Item",
+      "name": "accessory",
+      "token": 67110048,
+      "signatureHex": "0602",
+      "metadataOffset": 7423096
+    },
+    {
+      "key": "item.vanity",
+      "owner": "Terraria.Item",
+      "name": "vanity",
+      "token": 67110110,
+      "signatureHex": "0602",
+      "metadataOffset": 7423716
+    },
+    {
+      "key": "item.headSlot",
+      "owner": "Terraria.Item",
+      "name": "headSlot",
+      "token": 67110075,
+      "signatureHex": "0608",
+      "metadataOffset": 7423366
+    },
+    {
+      "key": "item.bodySlot",
+      "owner": "Terraria.Item",
+      "name": "bodySlot",
+      "token": 67110076,
+      "signatureHex": "0608",
+      "metadataOffset": 7423376
+    },
+    {
+      "key": "item.legSlot",
+      "owner": "Terraria.Item",
+      "name": "legSlot",
+      "token": 67110077,
+      "signatureHex": "0608",
+      "metadataOffset": 7423386
+    },
+    {
+      "key": "item.handOnSlot",
+      "owner": "Terraria.Item",
+      "name": "handOnSlot",
+      "token": 67110078,
+      "signatureHex": "0604",
+      "metadataOffset": 7423396
+    },
+    {
+      "key": "item.handOffSlot",
+      "owner": "Terraria.Item",
+      "name": "handOffSlot",
+      "token": 67110079,
+      "signatureHex": "0604",
+      "metadataOffset": 7423406
+    },
+    {
+      "key": "item.backSlot",
+      "owner": "Terraria.Item",
+      "name": "backSlot",
+      "token": 67110080,
+      "signatureHex": "0604",
+      "metadataOffset": 7423416
+    },
+    {
+      "key": "item.frontSlot",
+      "owner": "Terraria.Item",
+      "name": "frontSlot",
+      "token": 67110081,
+      "signatureHex": "0604",
+      "metadataOffset": 7423426
+    },
+    {
+      "key": "item.shoeSlot",
+      "owner": "Terraria.Item",
+      "name": "shoeSlot",
+      "token": 67110082,
+      "signatureHex": "0604",
+      "metadataOffset": 7423436
+    },
+    {
+      "key": "item.waistSlot",
+      "owner": "Terraria.Item",
+      "name": "waistSlot",
+      "token": 67110083,
+      "signatureHex": "0604",
+      "metadataOffset": 7423446
+    },
+    {
+      "key": "item.wingSlot",
+      "owner": "Terraria.Item",
+      "name": "wingSlot",
+      "token": 67110084,
+      "signatureHex": "0604",
+      "metadataOffset": 7423456
+    },
+    {
+      "key": "item.shieldSlot",
+      "owner": "Terraria.Item",
+      "name": "shieldSlot",
+      "token": 67110085,
+      "signatureHex": "0604",
+      "metadataOffset": 7423466
+    },
+    {
+      "key": "item.neckSlot",
+      "owner": "Terraria.Item",
+      "name": "neckSlot",
+      "token": 67110086,
+      "signatureHex": "0604",
+      "metadataOffset": 7423476
+    },
+    {
+      "key": "item.faceSlot",
+      "owner": "Terraria.Item",
+      "name": "faceSlot",
+      "token": 67110087,
+      "signatureHex": "0604",
+      "metadataOffset": 7423486
+    },
+    {
+      "key": "item.balloonSlot",
+      "owner": "Terraria.Item",
+      "name": "balloonSlot",
+      "token": 67110088,
+      "signatureHex": "0604",
+      "metadataOffset": 7423496
+    },
+    {
+      "key": "item.beardSlot",
+      "owner": "Terraria.Item",
+      "name": "beardSlot",
+      "token": 67110089,
+      "signatureHex": "0604",
+      "metadataOffset": 7423506
+    },
+    {
+      "key": "item.dye",
+      "owner": "Terraria.Item",
+      "name": "dye",
+      "token": 67110033,
+      "signatureHex": "0605",
+      "metadataOffset": 7422946
+    },
+    {
+      "key": "item.maxStack",
+      "owner": "Terraria.Item",
+      "name": "maxStack",
+      "token": 67110052,
+      "signatureHex": "0608",
+      "metadataOffset": 7423136
+    },
+    {
+      "key": "item.rare",
+      "owner": "Terraria.Item",
+      "name": "rare",
+      "token": 67110094,
+      "signatureHex": "0608",
+      "metadataOffset": 7423556
+    },
+    {
+      "key": "item.defense",
+      "owner": "Terraria.Item",
+      "name": "defense",
+      "token": 67110074,
+      "signatureHex": "0608",
+      "metadataOffset": 7423356
+    },
+    {
+      "key": "item.value",
+      "owner": "Terraria.Item",
+      "name": "value",
+      "token": 67110107,
+      "signatureHex": "0608",
+      "metadataOffset": 7423686
+    },
+    {
+      "key": "item.pick",
+      "owner": "Terraria.Item",
+      "name": "pick",
+      "token": 67110053,
+      "signatureHex": "0608",
+      "metadataOffset": 7423146
+    },
+    {
+      "key": "item.axe",
+      "owner": "Terraria.Item",
+      "name": "axe",
+      "token": 67110054,
+      "signatureHex": "0608",
+      "metadataOffset": 7423156
+    },
+    {
+      "key": "item.hammer",
+      "owner": "Terraria.Item",
+      "name": "hammer",
+      "token": 67110055,
+      "signatureHex": "0608",
+      "metadataOffset": 7423166
+    },
+    {
+      "key": "item.fishingPole",
+      "owner": "Terraria.Item",
+      "name": "fishingPole",
+      "token": 67110034,
+      "signatureHex": "0608",
+      "metadataOffset": 7422956
+    },
+    {
+      "key": "item.bait",
+      "owner": "Terraria.Item",
+      "name": "bait",
+      "token": 67110035,
+      "signatureHex": "0608",
+      "metadataOffset": 7422966
+    },
+    {
+      "key": "item.healLife",
+      "owner": "Terraria.Item",
+      "name": "healLife",
+      "token": 67110062,
+      "signatureHex": "0608",
+      "metadataOffset": 7423236
+    },
+    {
+      "key": "item.healMana",
+      "owner": "Terraria.Item",
+      "name": "healMana",
+      "token": 67110063,
+      "signatureHex": "0608",
+      "metadataOffset": 7423246
+    },
+    {
+      "key": "item.ammo",
+      "owner": "Terraria.Item",
+      "name": "ammo",
+      "token": 67110098,
+      "signatureHex": "0608",
+      "metadataOffset": 7423596
+    },
+    {
+      "key": "item.buffType",
+      "owner": "Terraria.Item",
+      "name": "buffType",
+      "token": 67110113,
+      "signatureHex": "0608",
+      "metadataOffset": 7423746
+    },
+    {
+      "key": "item.createTile",
+      "owner": "Terraria.Item",
+      "name": "createTile",
+      "token": 67110057,
+      "signatureHex": "0608",
+      "metadataOffset": 7423186
+    },
+    {
+      "key": "item.createWall",
+      "owner": "Terraria.Item",
+      "name": "createWall",
+      "token": 67110058,
+      "signatureHex": "0608",
+      "metadataOffset": 7423196
+    },
+    {
+      "key": "item.mountType",
+      "owner": "Terraria.Item",
+      "name": "mountType",
+      "token": 67110115,
+      "signatureHex": "0608",
+      "metadataOffset": 7423766
+    },
+    {
+      "key": "item.makeNPC",
+      "owner": "Terraria.Item",
+      "name": "makeNPC",
+      "token": 67110036,
+      "signatureHex": "0606",
+      "metadataOffset": 7422976
+    },
+    {
+      "key": "item.hairDye",
+      "owner": "Terraria.Item",
+      "name": "hairDye",
+      "token": 67110040,
+      "signatureHex": "0606",
+      "metadataOffset": 7423016
+    },
+    {
+      "key": "item.consumable",
+      "owner": "Terraria.Item",
+      "name": "consumable",
+      "token": 67110065,
+      "signatureHex": "0602",
+      "metadataOffset": 7423266
+    },
+    {
+      "key": "item.material",
+      "owner": "Terraria.Item",
+      "name": "material",
+      "token": 67110111,
+      "signatureHex": "0602",
+      "metadataOffset": 7423726
+    },
+    {
+      "key": "item.questItem",
+      "owner": "Terraria.Item",
+      "name": "questItem",
+      "token": 67110021,
+      "signatureHex": "0602",
+      "metadataOffset": 7422826
+    },
+    {
+      "key": "item.paint",
+      "owner": "Terraria.Item",
+      "name": "paint",
+      "token": 67110041,
+      "signatureHex": "0605",
+      "metadataOffset": 7423026
+    },
+    {
+      "key": "item.paintCoating",
+      "owner": "Terraria.Item",
+      "name": "paintCoating",
+      "token": 67110042,
+      "signatureHex": "0605",
+      "metadataOffset": 7423036
+    },
+    {
+      "key": "item.notAmmo",
+      "owner": "Terraria.Item",
+      "name": "notAmmo",
+      "token": 67110099,
+      "signatureHex": "0602",
+      "metadataOffset": 7423606
+    },
+    {
+      "key": "item.useAmmo",
+      "owner": "Terraria.Item",
+      "name": "useAmmo",
+      "token": 67110100,
+      "signatureHex": "0608",
+      "metadataOffset": 7423616
+    },
+    {
+      "key": "main.dedServ",
+      "owner": "Terraria.Main",
+      "name": "dedServ",
+      "token": 67111929,
+      "signatureHex": "0602",
+      "metadataOffset": 7441906
+    },
+    {
+      "key": "main.netMode",
+      "owner": "Terraria.Main",
+      "name": "netMode",
+      "token": 67112348,
+      "signatureHex": "0608",
+      "metadataOffset": 7446096
+    },
+    {
+      "key": "main.rand",
+      "owner": "Terraria.Main",
+      "name": "rand",
+      "token": 67112013,
+      "signatureHex": "06128338",
+      "metadataOffset": 7442746
+    },
+    {
+      "key": "main.player",
+      "owner": "Terraria.Main",
+      "name": "player",
+      "token": 67112233,
+      "signatureHex": "061d128124",
+      "metadataOffset": 7444946
+    },
+    {
+      "key": "main.myPlayer",
+      "owner": "Terraria.Main",
+      "name": "myPlayer",
+      "token": 67112232,
+      "signatureHex": "0608",
+      "metadataOffset": 7444936
+    },
+    {
+      "key": "main.recipe",
+      "owner": "Terraria.Main",
+      "name": "recipe",
+      "token": 67112228,
+      "signatureHex": "061d1280fc",
+      "metadataOffset": 7444896
+    },
+    {
+      "key": "main.projHostile",
+      "owner": "Terraria.Main",
+      "name": "projHostile",
+      "token": 67111707,
+      "signatureHex": "061d02",
+      "metadataOffset": 7439686
+    },
+    {
+      "key": "main.projHook",
+      "owner": "Terraria.Main",
+      "name": "projHook",
+      "token": 67111708,
+      "signatureHex": "061d02",
+      "metadataOffset": 7439696
+    },
+    {
+      "key": "main.drunkWorld",
+      "owner": "Terraria.Main",
+      "name": "drunkWorld",
+      "token": 67111521,
+      "signatureHex": "0602",
+      "metadataOffset": 7437826
+    },
+    {
+      "key": "main.getGoodWorld",
+      "owner": "Terraria.Main",
+      "name": "getGoodWorld",
+      "token": 67111522,
+      "signatureHex": "0602",
+      "metadataOffset": 7437836
+    },
+    {
+      "key": "main.tenthAnniversaryWorld",
+      "owner": "Terraria.Main",
+      "name": "tenthAnniversaryWorld",
+      "token": 67111523,
+      "signatureHex": "0602",
+      "metadataOffset": 7437846
+    },
+    {
+      "key": "main.dontStarveWorld",
+      "owner": "Terraria.Main",
+      "name": "dontStarveWorld",
+      "token": 67111524,
+      "signatureHex": "0602",
+      "metadataOffset": 7437856
+    },
+    {
+      "key": "main.notTheBeesWorld",
+      "owner": "Terraria.Main",
+      "name": "notTheBeesWorld",
+      "token": 67111525,
+      "signatureHex": "0602",
+      "metadataOffset": 7437866
+    },
+    {
+      "key": "main.remixWorld",
+      "owner": "Terraria.Main",
+      "name": "remixWorld",
+      "token": 67111526,
+      "signatureHex": "0602",
+      "metadataOffset": 7437876
+    },
+    {
+      "key": "main.noTrapsWorld",
+      "owner": "Terraria.Main",
+      "name": "noTrapsWorld",
+      "token": 67111527,
+      "signatureHex": "0602",
+      "metadataOffset": 7437886
+    },
+    {
+      "key": "main.zenithWorld",
+      "owner": "Terraria.Main",
+      "name": "zenithWorld",
+      "token": 67111528,
+      "signatureHex": "0602",
+      "metadataOffset": 7437896
+    },
+    {
+      "key": "main.skyblockWorld",
+      "owner": "Terraria.Main",
+      "name": "skyblockWorld",
+      "token": 67111529,
+      "signatureHex": "0602",
+      "metadataOffset": 7437906
+    },
+    {
+      "key": "main.infectedSeed",
+      "owner": "Terraria.Main",
+      "name": "infectedSeed",
+      "token": 67111531,
+      "signatureHex": "0602",
+      "metadataOffset": 7437926
+    },
+    {
+      "key": "main.ActiveWorldFileData",
+      "owner": "Terraria.Main",
+      "name": "ActiveWorldFileData",
+      "token": 67112309,
+      "signatureHex": "061281c8",
+      "metadataOffset": 7445706
+    },
+    {
+      "key": "main._gameModeDifficultyOverride",
+      "owner": "Terraria.Main",
+      "name": "_gameModeDifficultyOverride",
+      "token": 67111536,
+      "signatureHex": "0615118085010c",
+      "metadataOffset": 7437976
+    },
+    {
+      "key": "program.SavePath",
+      "owner": "Terraria.Program",
+      "name": "SavePath",
+      "token": 67111459,
+      "signatureHex": "060e",
+      "metadataOffset": 7437206
+    },
+    {
+      "key": "samples.ItemsByType",
+      "owner": "Terraria.ID.ContentSamples",
+      "name": "ItemsByType",
+      "token": 67115244,
+      "signatureHex": "0615126d0208128114",
+      "metadataOffset": 7475056
+    },
+    {
+      "key": "samples.ItemPersistentIdsByNetIds",
+      "owner": "Terraria.ID.ContentSamples",
+      "name": "ItemPersistentIdsByNetIds",
+      "token": 67115246,
+      "signatureHex": "0615126d02080e",
+      "metadataOffset": 7475076
+    },
+    {
+      "key": "language.Instance",
+      "owner": "Terraria.Localization.LanguageManager",
+      "name": "Instance",
+      "token": 67114901,
+      "signatureHex": "06128680",
+      "metadataOffset": 7471626
+    },
+    {
+      "key": "research.Instance",
+      "owner": "Terraria.GameContent.Creative.CreativeItemSacrificesCatalog",
+      "name": "Instance",
+      "token": 67129940,
+      "signatureHex": "06128d04",
+      "metadataOffset": 7622016
+    },
+    {
+      "key": "itemId.Count",
+      "owner": "Terraria.ID.ItemID",
+      "name": "Count",
+      "token": 67124865,
+      "signatureHex": "0606",
+      "metadataOffset": 7571266
+    },
+    {
+      "key": "prefixId.Count",
+      "owner": "Terraria.ID.PrefixID",
+      "name": "Count",
+      "token": 67115739,
+      "signatureHex": "0608",
+      "metadataOffset": 7480006
+    },
+    {
+      "key": "projectileId.Count",
+      "owner": "Terraria.ID.ProjectileID",
+      "name": "Count",
+      "token": 67126175,
+      "signatureHex": "0606",
+      "metadataOffset": 7584366
+    },
+    {
+      "key": "recipe.maxRecipes",
+      "owner": "Terraria.Recipe",
+      "name": "maxRecipes",
+      "token": 67109624,
+      "signatureHex": "0608",
+      "metadataOffset": 7418856
+    },
+    {
+      "key": "projectile.hostile",
+      "owner": "Terraria.Projectile",
+      "name": "hostile",
+      "token": 67109522,
+      "signatureHex": "0602",
+      "metadataOffset": 7417836
+    },
+    {
+      "key": "projectile.aiStyle",
+      "owner": "Terraria.Projectile",
+      "name": "aiStyle",
+      "token": 67109516,
+      "signatureHex": "0608",
+      "metadataOffset": 7417776
+    },
+    {
+      "key": "identity.type",
+      "owner": "Terraria.Item",
+      "name": "type",
+      "token": 67110043,
+      "signatureHex": "0608",
+      "metadataOffset": 7423046
+    },
+    {
+      "key": "groups.SwordsHammersAxesPicks",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": "SwordsHammersAxesPicks",
+      "token": 67139862,
+      "signatureHex": "061d02",
+      "metadataOffset": 7721236
+    },
+    {
+      "key": "groups.SpearsMacesChainsawsDrillsPunchCannon",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": "SpearsMacesChainsawsDrillsPunchCannon",
+      "token": 67139861,
+      "signatureHex": "061d02",
+      "metadataOffset": 7721226
+    },
+    {
+      "key": "groups.GunsBows",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": "GunsBows",
+      "token": 67139860,
+      "signatureHex": "061d02",
+      "metadataOffset": 7721216
+    },
+    {
+      "key": "groups.Magic",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": "Magic",
+      "token": 67139858,
+      "signatureHex": "061d02",
+      "metadataOffset": 7721196
+    },
+    {
+      "key": "groups.Summon",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": "Summon",
+      "token": 67139859,
+      "signatureHex": "061d02",
+      "metadataOffset": 7721206
+    },
+    {
+      "key": "groups.BoomerangsChakrams",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": "BoomerangsChakrams",
+      "token": 67139856,
+      "signatureHex": "061d02",
+      "metadataOffset": 7721176
+    },
+    {
+      "key": "groups.ItemsThatCanHaveLegendary2",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+ItemSets",
+      "name": "ItemsThatCanHaveLegendary2",
+      "token": 67139857,
+      "signatureHex": "061d02",
+      "metadataOffset": 7721186
+    },
+    {
+      "key": "pools.PrefixesForSwords",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForSwords",
+      "token": 67139847,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721086
+    },
+    {
+      "key": "pools.PrefixesForSpears",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForSpears",
+      "token": 67139848,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721096
+    },
+    {
+      "key": "pools.PrefixesForGunsBows",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForGunsBows",
+      "token": 67139849,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721106
+    },
+    {
+      "key": "pools.PrefixesForMagic",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForMagic",
+      "token": 67139850,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721116
+    },
+    {
+      "key": "pools.PrefixesForSummons",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForSummons",
+      "token": 67139851,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721126
+    },
+    {
+      "key": "pools.PrefixesForBoomeransAndChakrums",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForBoomeransAndChakrums",
+      "token": 67139852,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721136
+    },
+    {
+      "key": "pools.PrefixesForBoomeransAndChakrums_TerrarianYoyo",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForBoomeransAndChakrums_TerrarianYoyo",
+      "token": 67139853,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721146
+    },
+    {
+      "key": "pools.PrefixesForAccessories",
+      "owner": "Terraria.GameContent.Prefixes.PrefixLegacy+Prefixes",
+      "name": "PrefixesForAccessories",
+      "token": 67139854,
+      "signatureHex": "061d08",
+      "metadataOffset": 7721156
+    },
+    {
+      "key": "sets.IsFood",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "IsFood",
+      "token": 67138151,
+      "signatureHex": "061d02",
+      "metadataOffset": 7704126
+    },
+    {
+      "key": "sets.IsBasicFish",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "IsBasicFish",
+      "token": 67138161,
+      "signatureHex": "061d02",
+      "metadataOffset": 7704226
+    },
+    {
+      "key": "sets.IsFishingCrate",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "IsFishingCrate",
+      "token": 67138162,
+      "signatureHex": "061d02",
+      "metadataOffset": 7704236
+    },
+    {
+      "key": "sets.CanGetPrefixes",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "CanGetPrefixes",
+      "token": 67138135,
+      "signatureHex": "061d02",
+      "metadataOffset": 7703966
+    },
+    {
+      "key": "sets.IsAMaterial",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "IsAMaterial",
+      "token": 67138140,
+      "signatureHex": "061d02",
+      "metadataOffset": 7704016
+    },
+    {
+      "key": "priorities.SortingPriorityExtractibles",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityExtractibles",
+      "token": 67138197,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704586
+    },
+    {
+      "key": "priorities.SortingPriorityMaterials",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityMaterials",
+      "token": 67138196,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704576
+    },
+    {
+      "key": "priorities.SortingPriorityMiscAcorns",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityMiscAcorns",
+      "token": 67138181,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704426
+    },
+    {
+      "key": "priorities.SortingPriorityMiscBossBags",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityMiscBossBags",
+      "token": 67138184,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704456
+    },
+    {
+      "key": "priorities.SortingPriorityMiscGems",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityMiscGems",
+      "token": 67138182,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704436
+    },
+    {
+      "key": "priorities.SortingPriorityMiscHerbsAndSeeds",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityMiscHerbsAndSeeds",
+      "token": 67138183,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704446
+    },
+    {
+      "key": "priorities.SortingPriorityMiscImportants",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityMiscImportants",
+      "token": 67138194,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704556
+    },
+    {
+      "key": "priorities.SortingPriorityPainting",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityPainting",
+      "token": 67138199,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704606
+    },
+    {
+      "key": "priorities.SortingPriorityPotionsBuffs",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityPotionsBuffs",
+      "token": 67138192,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704536
+    },
+    {
+      "key": "priorities.SortingPriorityPotionsDyeMaterial",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityPotionsDyeMaterial",
+      "token": 67138193,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704546
+    },
+    {
+      "key": "priorities.SortingPriorityRopes",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityRopes",
+      "token": 67138198,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704596
+    },
+    {
+      "key": "priorities.SortingPriorityTerraforming",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityTerraforming",
+      "token": 67138200,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704616
+    },
+    {
+      "key": "priorities.SortingPriorityToolsFishing",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityToolsFishing",
+      "token": 67138186,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704476
+    },
+    {
+      "key": "priorities.SortingPriorityToolsGolf",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityToolsGolf",
+      "token": 67138187,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704486
+    },
+    {
+      "key": "priorities.SortingPriorityToolsInstruments",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityToolsInstruments",
+      "token": 67138185,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704466
+    },
+    {
+      "key": "priorities.SortingPriorityToolsKeys",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityToolsKeys",
+      "token": 67138189,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704506
+    },
+    {
+      "key": "priorities.SortingPriorityToolsKites",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityToolsKites",
+      "token": 67138188,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704496
+    },
+    {
+      "key": "priorities.SortingPriorityToolsMisc",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityToolsMisc",
+      "token": 67138190,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704516
+    },
+    {
+      "key": "priorities.SortingPriorityWeaponsRanged",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityWeaponsRanged",
+      "token": 67138191,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704526
+    },
+    {
+      "key": "priorities.SortingPriorityWiring",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "SortingPriorityWiring",
+      "token": 67138195,
+      "signatureHex": "061d08",
+      "metadataOffset": 7704566
+    }
+  ],
+  "dependencies": [
+    {
+      "name": "ReLogic",
+      "file": "ReLogic.dll",
+      "sha256": "e1c5dccefff5fd1c789ff712babfa1a305fced0d03c96ef30f2c14d99aa0af29",
+      "resource": "Terraria.Libraries.ReLogic.ReLogic.dll",
+      "bytes": 176128
+    },
+    {
+      "name": "Ionic.Zip.CF",
+      "file": "Ionic.Zip.CF.dll",
+      "sha256": "725f244d65ff6d323adc53066cfa02dba3faaf01b6e6c597fe6aea608fd68c0d",
+      "resource": "Terraria.Libraries.DotNetZip.Ionic.Zip.CF.dll",
+      "bytes": 206336
+    },
+    {
+      "name": "Newtonsoft.Json",
+      "file": "Newtonsoft.Json.dll",
+      "sha256": "588155340ef9b7aa609b71724679b5356ba2ecdaa31ce1de010ae6bb3436fd07",
+      "resource": "Terraria.Libraries.JSON.NET.Newtonsoft.Json.dll",
+      "bytes": 522240
+    },
+    {
+      "name": "CsvHelper",
+      "file": "CsvHelper.dll",
+      "sha256": "3d1a08960b8d55c74b088a64d47966fcf77a54a65bc2171f0275ee27bb330f6d",
+      "resource": "Terraria.Libraries.CsvHelper.CsvHelper.dll",
+      "bytes": 78848
+    },
+    {
+      "name": "System.ValueTuple",
+      "file": "System.ValueTuple.dll",
+      "sha256": "a2152aa98f7ff2a7c934a192f6c46016ef4400c2035f0cfa177fedb219b7b9e2",
+      "resource": "Terraria.Libraries.NVorbis.System.ValueTuple.dll",
+      "bytes": 79496
+    },
+    {
+      "name": "Microsoft.Xna.Framework",
+      "file": "Microsoft.Xna.Framework.dll",
+      "sha256": "38e7093f52d7474bbc6256906519781a1210d7da50a1c667b52716fcf49ca130",
+      "resource": null
+    },
+    {
+      "name": "Microsoft.Xna.Framework.Game",
+      "file": "Microsoft.Xna.Framework.Game.dll",
+      "sha256": "b5dffdd8125abef2a4507ba4e1d2f11062143f0a63d48fe4f298b95ad746a1f0",
+      "resource": null
+    },
+    {
+      "name": "Microsoft.Xna.Framework.Graphics",
+      "file": "Microsoft.Xna.Framework.Graphics.dll",
+      "sha256": "560080fc39021c611ca9d076dcebed312faf6d7d1413c2dc523683ea635e9f55",
+      "resource": null
+    }
+  ],
+  "nativeDependencies": [
+    {
+      "file": "msvcr100.dll",
+      "sha256": "1221a09484964a6f38af5e34ee292b9afefccb3dc6e55435fd3aaf7c235d9067"
+    },
+    {
+      "file": "msvcp100.dll",
+      "sha256": "a3ba6421991241bea9c8334b62c3088f8f131ab906c3cc52113945d05016a35f"
+    },
+    {
+      "file": "d3dx9_41.dll",
+      "sha256": "6ac4df203af419d3f3b7d9a99e14a3490ea3ad307c474bfe36baea642b1421f6"
+    },
+    {
+      "file": "X3DAudio1_7.dll",
+      "sha256": "288c701bdedf1d45c63dd0b7d424a752f8819f90feb5088c582f76bc98970ba3"
+    }
+  ],
+  "limitations": [
+    "Candidate diagnostic subsequence, not proven complete initializer closure.",
+    "No game or vendor execution or compilation performed in source-generation environment."
+  ],
+  "xnaVectorFields": [
+    {
+      "key": "X",
+      "owner": "Microsoft.Xna.Framework.Vector3",
+      "name": "X",
+      "token": 67110415,
+      "signatureHex": "060c"
+    },
+    {
+      "key": "Y",
+      "owner": "Microsoft.Xna.Framework.Vector3",
+      "name": "Y",
+      "token": 67110416,
+      "signatureHex": "060c"
+    },
+    {
+      "key": "Z",
+      "owner": "Microsoft.Xna.Framework.Vector3",
+      "name": "Z",
+      "token": 67110417,
+      "signatureHex": "060c"
+    }
+  ],
+  "armorShaderClasses": [
+    "Terraria.Graphics.Shaders.ArmorShaderData",
+    "Terraria.GameContent.Dyes.ReflectiveArmorShaderData",
+    "Terraria.GameContent.Dyes.TeamArmorShaderData",
+    "Terraria.GameContent.Dyes.TwilightDyeShaderData"
+  ],
+  "xnaColorField": {
+    "key": "color.packed",
+    "owner": "Microsoft.Xna.Framework.Color",
+    "name": "packedValue",
+    "token": 67110387,
+    "signatureHex": "0609",
+    "metadataOffset": 363602,
+    "signatureOffset": 622655,
+    "signatureSha256": "9fdded952da6a0b5e0b5caa90e194b5b2da46092b26a9e382c8d895c662d9b0f"
+  }
+}
