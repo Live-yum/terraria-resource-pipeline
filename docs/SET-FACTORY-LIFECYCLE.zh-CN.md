@@ -23,7 +23,7 @@
 1. 精确 Recycle 泛型类型分派、cast 和锁 finally 的正常返回行为；按数组身份执行 enqueue，拒绝未知/外逃引用。
 2. 队列的有序内容和 dequeue 后的别名关系，包含重复回收、null、错误长度、跨实例回收以及写入已发布数组的影响。
 3. float 的完整 Create/Get 效果，尤其浮点索引 `conv.i4` 的有效范围、非有限值及截断；不能套用 int 索引解释。
-4. 非空 custom 的类型初始化、装箱/拆箱、反射/转换和默认值语义。任何未知副作用都必须停止共享状态传播。
+4. 非空 custom 仅已闭合精确 integral primitive/Nullable 字面量分支，详见 [custom 字面量证明](SET-FACTORY-CUSTOM-LITERALS.zh-CN.md)。其他 struct/class/enum、ChangeType 和默认值构造仍未闭合；任何未知副作用都必须停止共享状态传播。
 5. 整个 Count/Sets 初始化器的副作用闭合、所有数组后续读写和引用逸出，以及最终使用点的状态证明。
 
 完整生产语义、源版本与归档绑定、独立审查及发布门禁未改变。`wholeInitializerProven`、`numericSizeProven`、`normalReturnGuaranteed`、`runtimeSnapshotUsable` 均为 false。现有四组 dispatch 配方仍标记条件性；新的局部证书不会把它们统一升级为运行时数据。
@@ -39,3 +39,5 @@ PYTHONPATH=src:tests python -m unittest discover -s tests -p 'test_set_factory*.
 对已提供的同安装 1.4.5.8 客户端和服务端输入，仅进行只读字节解析并核对已记录 SHA256。两者均证明 24 个连续分配/存储片段、46 个调用发生位置；其中 11 个是新增移除的残余调用，涉及 List 构造、List.Add 和 CreateIntSet 三类关系。残余从 33 组 / 662 次降至 33 组 / 651 次；组数未下降，因为相同目标在后缀仍有未证明发生位置。
 
 两者都在 IL 888 处停止，后续首个未证明调用位于 IL 1251。该段涉及非空 custom 参数构建，未予跳过或假设纯函数。真实数组内容、原始程序集和完整私有证据不提交公开仓库；所有完整性、可发布性和运行时快照标志保持关闭。
+
+后续 custom 字面量扩展已将边界推进到 IL 1843、37 个片段 / 66 个调用，残余为 32 组 / 643 次。详见 [新增证明与剩余义务](SET-FACTORY-CUSTOM-LITERALS.zh-CN.md)。以上 IL 888 和 24 / 46 计数保留为该前缀证明最初版本的验证基线。

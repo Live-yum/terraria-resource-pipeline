@@ -170,6 +170,17 @@ def dispatch_pe(**options):
         rows[10] += [struct.pack('<HHH', list_parent, text('.ctor'), blob(b'\x20\x00\x01')),
                      struct.pack('<HHH', list_parent, text(options.get('list_add_name', 'Add')), blob(b'\x20\x01\x01\x13\x00'))]
         rows[4][2] = struct.pack('<HHH', 0x16, text('IsFood'), blob(b'\x06' + list_sig))
+    for name in options.get('extra_type_refs', ()):
+        rows[1].append(struct.pack('<HHH', 6, text(name), text('System')))
+    for parent, name, sig in options.get('extra_members', ()):
+        rows[10].append(struct.pack('<HHH', parent, text(name), blob(sig)))
+    for sig in options.get('extra_type_specs', ()):
+        rows.setdefault(27, []).append(struct.pack('<H', blob(sig)))
+    for target, sig in options.get('extra_method_specs', ()):
+        rows.setdefault(43, []).append(struct.pack('<HH', target, blob(sig)))
+    if options.get('sets_locals'):
+        sets_local = len(rows[17]) + 1
+        rows[17].append(struct.pack('<H', blob(options['sets_locals'])))
     def metadata():
         rows[6] = [struct.pack('<IHHHHH',*row) for row in methods]
         tables = struct.pack('<IBBBBQQ',0,2,0,0,1,sum(1<<key for key in rows),0)
@@ -187,7 +198,7 @@ def dispatch_pe(**options):
     meta = metadata(); start=(0x300+len(meta)+3)&~3; bodies=bytearray()
     for n,code in enumerate(codes):
         methods[n][0] = 0x2000+start+len(bodies)-0x200
-        bodies.extend(struct.pack('<HHII', options.get('header_flags', {}).get(n+1,0x301b if pooled and n==5 else 0x3013),16,len(code),0x11000000 | sets_local if n == 1 and options.get('custom_struct') else 0x11000000 | custom_local if n == 6 and options.get('custom_code') is not None else 0x11000001 if n==4 else 0x11000002 if pooled and n==5 else 0)+code)
+        bodies.extend(struct.pack('<HHII', options.get('header_flags', {}).get(n+1,0x301b if pooled and n==5 else 0x3013),16,len(code),0x11000000 | sets_local if n == 1 and (options.get('custom_struct') or options.get('sets_locals')) else 0x11000000 | custom_local if n == 6 and options.get('custom_code') is not None else 0x11000001 if n==4 else 0x11000002 if pooled and n==5 else 0)+code)
         bodies.extend(b'\0'*((-len(bodies))%4))
         if pooled and n==5: bodies.extend(getter_eh)
     data_start=start+len(bodies);cursor=data_start

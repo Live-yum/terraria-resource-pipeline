@@ -68,6 +68,8 @@ dotnet run --project tools/AssemblyInspector -- /private/path/TerrariaServer.exe
 
 ## 接下来必须完成的真实输入适配
 
+已新增全部 13 个消费角色的有限派生组装器，包含独立域 join、分类、材料规则、完整 SRGB、新 PNG 裁切、人物 14 帧/图集、世界生成选项；不再只依赖 `ROLE=PATH` 打包。但最终源事实/策略 producer 仍未闭合，不能宣称已达到“仅缺真机验收”。worldgen 服务配置草稿不增加发布角色。开发者私有草稿入口与逐角色缺口见 [消费组装与源语义边界](docs/CONSUMER-ASSEMBLERS.zh-CN.md)。
+
 - 将已整理的资源消费清单与 110 子项协议绑定到真实版本的 ID、字段和值语义；目前合成校验不能证明真实游戏提取完整
 - 服务端包与同版本客户端 Content 的双输入与双源哈希
 - 已安装可信提取工具的独立、无网络、只读输入适配；绝不由上传文件指定命令
