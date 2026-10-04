@@ -74,6 +74,8 @@ dotnet run --project tools/AssemblyInspector -- /private/path/TerrariaServer.exe
 
 新增独立 ItemID/TileID/WallID Count 初始化器和七个前缀 item-group 数组的有限边界证明，包含嵌入 ReLogic 的完整回调/缓存写入检查。Count 是数值上界，不等于所有值都可选择；证据仍依赖显式的核心库语义、依赖绑定模型和无外部干预前提，未验证真实运行时依赖解析。见 [Count 边界](docs/ID-COUNT-SEMANTICS.zh-CN.md) 与 [前缀组边界](docs/PREFIX-GROUP-SEMANTICS.zh-CN.md)。
 
+新增 [地图调色板有限模型](docs/MAP-PALETTE-SEMANTICS.zh-CN.md)，仅证明 legend 调用前的 tile/wall 选项单元；别名和未知值流严格检查，XNA 值运算从固定官方字节建模，运行时依赖与发布门禁不变。后续按 [13 角色生产就绪矩阵](docs/SOURCE-PRODUCER-READINESS.zh-CN.md) 完成有界观察采集与实际来源链，不把局部证明计数当作全链路完成。
+
 ## 接下来必须完成的真实输入适配
 
 已新增全部 13 个消费角色的有限派生组装器，包含独立域 join、分类、材料规则、完整 SRGB、新 PNG 裁切、人物 14 帧/图集、世界生成选项；不再只依赖 `ROLE=PATH` 打包。但最终源事实/策略 producer 仍未闭合，不能宣称已达到“仅缺真机验收”。worldgen 服务配置草稿不增加发布角色。开发者私有草稿入口与逐角色缺口见 [消费组装与源语义边界](docs/CONSUMER-ASSEMBLERS.zh-CN.md)。
