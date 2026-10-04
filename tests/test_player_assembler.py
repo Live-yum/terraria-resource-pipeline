@@ -78,7 +78,7 @@ class PlayerAssemblerTests(unittest.TestCase):
         self.assertEqual(rgba[24:28], bytes((40, 0, 80, 255)))
         self.assertEqual(length, len(objects['player.walk']))
         repair = presentation['frameRepairs']['textures']['player_0_0']
-        self.assertEqual(expand(base64.b64decode(repair['data']), w * h * 2), rgba)
+        self.assertEqual(zlib.decompress(base64.b64decode(repair['data'])), rgba)
         self.assertEqual(presentation['items'], {'gameVersion': '0.0.1', **inputs['policy']['itemHashes']})
         with Image.open(BytesIO(objects['player.atlas'])) as atlas:
             self.assertEqual(atlas.size, (80, 56))
@@ -104,6 +104,8 @@ class PlayerAssemblerTests(unittest.TestCase):
         objects, _ = assemble_player_resources(**inputs)
         self.assertEqual(zlib.decompress(objects['player.walk'])[:2], b'\0\0')
         self.assertEqual(expand(objects['player.walk'], 1024), image.tobytes())
+        repair = json.loads(objects['player.presentation'])['frameRepairs']['textures']['player_0_0']
+        self.assertEqual(zlib.decompress(base64.b64decode(repair['data'])), image.tobytes())
 
     def test_reject_missing_facts_domains_policy_geometry_and_hashes(self):
         edits = [
@@ -178,6 +180,11 @@ class PlayerAssemblerTests(unittest.TestCase):
 const root=process.argv[1],p=JSON.parse(fs.readFileSync(0,'utf8'));
 const {validatePlayerResourceSnapshot}=await import(pathToFileURL(root+'/shared/game/player-resource-contract.mjs'));
 const {inflatePlayerTexture}=await import(pathToFileURL(root+'/shared/game/player-resource-inflate.mjs'));
+// Stub only app snapshot acquisition; exercise the actual repair implementation and inflater.
+const repairSource=fs.readFileSync(root+'/features/player-editor/pages/services/render/frame-repairs.mjs','utf8')
+ .replace("import {getPlayerPresentation} from '../presentation.mjs'","const getPlayerPresentation=snapshot=>snapshot.readJson('player.presentation')")
+ .replace("'../../../../../shared/game/player-resource-inflate.mjs'",JSON.stringify(pathToFileURL(root+'/shared/game/player-resource-inflate.mjs').href));
+const {correctedTexture}=await import('data:text/javascript;base64,'+Buffer.from(repairSource).toString('base64'));
 const sourceBinding={serverSha256:'a'.repeat(64),clientTreeSha:'b'.repeat(40),consumerCommit:'c'.repeat(40)};
 const itemSnapshot={gameVersion:'0.0.1',manifest:{sourceBinding,objects:Object.fromEntries(Object.entries(p.itemHashes).map(([k,v])=>[k,{rawSha256:v}]))},readJson:r=>p.items[r]};
 validatePlayerResourceSnapshot({gameVersion:'0.0.1',manifest:{sourceBinding,objects:{'player.walk':{rawSha256:p.walkHash}}},
@@ -186,6 +193,20 @@ for(const entry of Object.values(p.presentation.walkIndex.textures)){
  const [at,length,w,h,,,,,frames]=entry,n=w*h*(Math.max(...frames)+1), raw=inflatePlayerTexture(new Uint8Array(p.walk.slice(at,at+length)),2+Math.max(n*4,1024+n));
  const count=raw[0]|(raw[1]<<8);assert(count<=256);assert.equal(raw.length,count?2+count*4+n:2+n*4);
  if(count)for(const index of raw.subarray(2+count*4))assert(index<count);
+}
+for(const [key,texture] of Object.entries(p.presentation.frameRepairs.textures)){
+ const n=texture.width*texture.height*(Math.max(...texture.frames)+1)*4;
+ const raw=inflatePlayerTexture(new Uint8Array(Buffer.from(texture.data,'base64')),n);
+ assert.equal(raw.length,n);
+ const corrected=correctedTexture(key,{readJson:()=>p.presentation});
+ assert.deepEqual(corrected.rgba,raw);
+ assert.deepEqual(corrected.entry,[0,0,texture.width,texture.height,texture.x,texture.y,texture.originalWidth,56,texture.frames]);
+ assert.deepEqual([...raw.subarray(0,4)],[0,0,80,255]);
+ // Reproduce the old bug: substituting the palette-prefixed walking segment must fail.
+ const [at,length]=p.presentation.walkIndex.textures[key];
+ const broken=structuredClone(p.presentation);
+ broken.frameRepairs.textures[key].data=Buffer.from(p.walk.slice(at,at+length)).toString('base64');
+ assert.throws(()=>correctedTexture(key,{readJson:()=>broken}));
 }console.log('Actual player contract and inflater passed');'''
         result = subprocess.run(['node', '--input-type=module', '-e', code, str(root)], input=json.dumps(payload),
                                 capture_output=True, text=True, check=True, timeout=30)
