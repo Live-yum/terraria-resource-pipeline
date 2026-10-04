@@ -14,6 +14,8 @@ from .security import PipelineError, atomic_write, canonical_json, relative_path
 from .static_il import bounded_evidence_json, json_evidence_size
 from .locale_mapping import extract_locale_mapping
 from . import research_semantics
+from . import accessory_prefix_semantics
+from . import prefix_pool_semantics, prefix_coefficient_semantics
 
 FAMILIES = {
     'items': r'Item_(\d+)', 'tiles': r'Tiles_(\d+)', 'walls': r'Wall_(\d+)',
@@ -78,6 +80,65 @@ def _research_evidence(path: Path, source_row: dict, output: Path, index: int, c
     atomic_write(output / evidence_path, encoded)
     return {'sourceSha256': digest, 'path': evidence_path, 'sha256': sha256(encoded),
             'summary': summary}
+
+
+def _accessory_prefix_evidence(path: Path, source_row: dict, output: Path, role: str, index: int, checkpoint):
+    """Private source proof with an explicit summary allowlist, never raw rows."""
+    checkpoint()
+    digest = source_row['sha256']
+    if digest in accessory_prefix_semantics.PROFILES:
+        model = accessory_prefix_semantics.extract_accessory_prefix_semantics(path, checkpoint=checkpoint)
+        if model.get('inputSha256') != digest or model.get('sourceRole') != role:
+            raise PipelineError('Accessory prefix proof source binding mismatch')
+    else:
+        model = {'schemaVersion': 1, 'family': 'accessory-prefix-effects', 'status': 'UNSUPPORTED_PROFILE',
+                 'inputSha256': digest, 'sourceRole': role, 'methodModelComplete': False,
+                 'allBytePrefixInputsCovered': False, 'executedInput': False, 'complete': False,
+                 'publishable': False, 'runtimeSnapshotUsable': False,
+                 'scope': 'GrantPrefixBenefits additive deltas only'}
+    encoded = bounded_evidence_json(model, 1024 * 1024, checkpoint)
+    name = f'{role}-{index}-accessory-prefix.json'
+    summary = {key: model[key] for key in ('family', 'status', 'methodModelComplete', 'allBytePrefixInputsCovered',
+                                         'executedInput', 'complete', 'publishable', 'runtimeSnapshotUsable')}
+    summary['effectCount'] = len(model.get('effects', []))
+    summary['consumerProjectionVerified'] = model.get('methodModelComplete') is True
+    summary['fullItemGroupComplete'] = False
+    checkpoint()
+    atomic_write(output / name, encoded)
+    return {'sourceRole': role, 'sourceSha256': digest, 'path': name, 'sha256': sha256(encoded), 'summary': summary}
+
+
+def _prefix_source_evidence(path: Path, source_row: dict, output: Path, role: str, index: int, kind: str, checkpoint):
+    """Version-selected pool/coefficient models; no private rows enter receipts."""
+    checkpoint(); digest = source_row['sha256']
+    if kind == 'pools':
+        profiles, extract = prefix_pool_semantics._PROFILES, prefix_pool_semantics.extract_prefix_pool_semantics
+        flag, family = 'wholeInitializerProven', 'prefix-pools'
+    elif kind == 'coefficients':
+        profiles, extract = prefix_coefficient_semantics.PROFILES, prefix_coefficient_semantics.extract_prefix_coefficient_semantics
+        flag, family = 'coefficientModelComplete', 'prefix-coefficients'
+    else: raise PipelineError('Unknown installed prefix evidence stage')
+    if digest in profiles:
+        model = extract(path, checkpoint=checkpoint)
+        if model.get('inputSha256') != digest or model.get('sourceRole') != role:
+            raise PipelineError('Prefix source proof binding mismatch')
+    else:
+        model = {'schemaVersion': 1, 'family': family, 'status': 'UNSUPPORTED_PROFILE', 'sourceRole': role,
+                 'inputSha256': digest, flag: False, 'executedInput': False, 'complete': False,
+                 'publishable': False, 'runtimeSnapshotUsable': False}
+    summary = {'family': family, 'status': model['status'], 'modelComplete': model[flag],
+               'executedInput': False, 'complete': False, 'publishable': False, 'runtimeSnapshotUsable': False}
+    if kind == 'pools':
+        summary.update(factScope='INITIALIZER_BOUNDARY', poolCount=len(model.get('pools', {})),
+                       entryCount=sum(len(v) for v in model.get('pools', {}).values()),
+                       independentDomainInitializerProven=model.get('independentDomainInitializerProven') is True)
+    else:
+        summary.update(factScope='METHOD_OUT_TRANSFORM', prefixCount=len(model.get('records', [])),
+                       eligibilityProven=False, priceScoreProven=False)
+    encoded = bounded_evidence_json(model, 4 * 1024 * 1024, checkpoint)
+    name = f'{role}-{index}-prefix-{kind}.json'
+    checkpoint(); atomic_write(output / name, encoded)
+    return {'sourceRole': role, 'sourceSha256': digest, 'path': name, 'sha256': sha256(encoded), 'summary': summary}
 
 
 def _validated_expected_inventories(sources: dict[str, Path], expected: dict, checkpoint) -> dict[str, list[dict]]:
@@ -165,7 +226,8 @@ class RawEvidenceProducer:
         executables = [row for row in inventories.get('server', []) if Path(row['path']).name == 'TerrariaServer.exe']
         if len(executables) > 4:
             raise PipelineError('Ambiguous server executable inventory')
-        assemblies, rejected, mappings, research = [], [], [], []
+        assemblies, rejected, mappings, research, accessory_prefix = [], [], [], [], []
+        prefix_pools, prefix_coefficients = [], []
         for index, source_row in enumerate(executables):
             checkpoint()
             # Inventory reuse cannot bypass link checks on paths actually read.
@@ -174,6 +236,9 @@ class RawEvidenceProducer:
             if digest != source_row['sha256']:
                 raise PipelineError('Static metadata source differs from verified inventory')
             research.append(_research_evidence(path, source_row, output, index, checkpoint))
+            accessory_prefix.append(_accessory_prefix_evidence(path, source_row, output, 'server', index, checkpoint))
+            prefix_pools.append(_prefix_source_evidence(path, source_row, output, 'server', index, 'pools', checkpoint))
+            prefix_coefficients.append(_prefix_source_evidence(path, source_row, output, 'server', index, 'coefficients', checkpoint))
             try:
                 options={'checkpoint':checkpoint}
                 if self._builtin_inspector:options['requested_locales']=('en-US','zh-Hans')
@@ -207,6 +272,9 @@ class RawEvidenceProducer:
             digest = file_digest(path, checkpoint=checkpoint)
             if digest != source_row['sha256'] or path.stat().st_size != source_row['bytes']:
                 raise PipelineError('Client static metadata source differs from verified inventory')
+            accessory_prefix.append(_accessory_prefix_evidence(path, source_row, output, 'client', index, checkpoint))
+            prefix_pools.append(_prefix_source_evidence(path, source_row, output, 'client', index, 'pools', checkpoint))
+            prefix_coefficients.append(_prefix_source_evidence(path, source_row, output, 'client', index, 'coefficients', checkpoint))
             try:
                 evidence = extract_client_metadata(path, checkpoint=checkpoint)
             except PipelineError:
@@ -282,6 +350,17 @@ class RawEvidenceProducer:
              'sourceSha256': item['sourceSha256'], 'evidencePath': item['path'],
              'evidenceSha256': item['sha256']}
             for item in research]
+        coverage['items']['accessoryPrefixSubcapabilities'] = [
+            {'capability': 'accessoryPrefixFieldAdds', 'status': item['summary']['status'], 'complete': False,
+             'methodModelComplete': item['summary']['methodModelComplete'], 'sourceRole': item['sourceRole'],
+             'sourceSha256': item['sourceSha256'], 'evidencePath': item['path'], 'evidenceSha256': item['sha256']}
+            for item in accessory_prefix]
+        coverage['prefixes']['sourceSubcapabilities'] = [
+            {'capability': item['summary']['family'], 'status': item['summary']['status'], 'complete': False,
+             'modelComplete': item['summary']['modelComplete'], 'factScope': item['summary']['factScope'],
+             'sourceRole': item['sourceRole'], 'sourceSha256': item['sourceSha256'],
+             'evidencePath': item['path'], 'evidenceSha256': item['sha256']}
+            for item in [*prefix_pools, *prefix_coefficients]]
         manifest = {'schemaVersion': 1, 'adapterId': self.adapter_id,
             'status': 'PARTIAL', 'executedInput': False, 'extractionComplete': False,
             'publishable': False, 'inputBinding': bindings,
@@ -291,6 +370,9 @@ class RawEvidenceProducer:
             'rejectedClientMetadata': rejected_clients, 'serverClientComparisons': comparisons,
             'localeMappingEvidence':mappings,
             'researchEvidence': research,
+            'accessoryPrefixEvidence': accessory_prefix,
+            'prefixPoolEvidence': prefix_pools,
+            'prefixCoefficientEvidence': prefix_coefficients,
             'unclassifiedDecodedImages': unclassified,
             'versionEvidence': [item['evidence'].get('gameVersionEvidence') for item in assemblies],
             'clientVersionEvidence': [item['evidence']['gameVersionEvidence'] for item in clients],

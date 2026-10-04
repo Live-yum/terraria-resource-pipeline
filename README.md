@@ -66,6 +66,12 @@ dotnet run --project tools/AssemblyInspector -- /private/path/TerrariaServer.exe
 
 `create_app(..., consumer_demo=True)` 可显式开启网页中的原创合成套件预览/审批/回滚，仅推送本地 bare Git；真实适配与 CDN 权限门禁仍然关闭。可运行 `PYTHONPATH=src python scripts/prove_consumer_release_set.py --output /tmp/new-consumer-proof` 生成跨语言本地验收输入。详见 [完整套件协议与安全边界](docs/consumer-release-set.md)。
 
+## 固定来源的有限前缀证明
+
+新增不执行游戏程序集的数据式证明：完整饰品字段加成、初始前缀池数组、九个 out 系数。`RawEvidenceProducer` 按固定 client/server 源哈希自动生成私有证据，仅将受控摘要写入 manifest。方法/初始化器边界不代表最终 Item eligibility、调用方生命周期或完整资源提取；所有整组完成与发布门禁仍关闭。
+
+详见 [饰品变换](docs/ACCESSORY-PREFIX-SEMANTICS.zh-CN.md)、[初始前缀池](docs/PREFIX-POOL-SEMANTICS.zh-CN.md) 和 [九系数证明](docs/PREFIX-COEFFICIENT-SEMANTICS.zh-CN.md)。测试使用原创 PE，真实游戏表和源文件不进入仓库或 Actions。
+
 ## 接下来必须完成的真实输入适配
 
 已新增全部 13 个消费角色的有限派生组装器，包含独立域 join、分类、材料规则、完整 SRGB、新 PNG 裁切、人物 14 帧/图集、世界生成选项；不再只依赖 `ROLE=PATH` 打包。但最终源事实/策略 producer 仍未闭合，不能宣称已达到“仅缺真机验收”。worldgen 服务配置草稿不增加发布角色。开发者私有草稿入口与逐角色缺口见 [消费组装与源语义边界](docs/CONSUMER-ASSEMBLERS.zh-CN.md)。
