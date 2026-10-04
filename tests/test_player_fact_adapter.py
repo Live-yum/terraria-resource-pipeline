@@ -53,6 +53,27 @@ def original_join_inputs():
     return observation, static, app, objects, {'clothes:0': {}, 'clothes:1': {}, 'clothes:2': {}}
 
 
+class PlayerFactSnapshotTests(unittest.TestCase):
+    def test_mapping_budgets_precede_copy_or_parsing(self):
+        observation, static, policy, objects, choices = original_join_inputs()
+        with self.assertRaises(PipelineError):
+            _join_player_facts(observation, static, policy, objects, {str(n): None for n in range(8193)})
+        with self.assertRaises(PipelineError):
+            _join_player_facts(observation, static, policy, {**objects, 'extra': b'x'}, choices)
+
+    def test_callback_cannot_rewrite_observation_or_foundation_receipt(self):
+        observation, static, policy, objects, choices = original_join_inputs()
+        name = observation['buffs'][0]['name']
+        hashes = {role: __import__('hashlib').sha256(raw).hexdigest() for role, raw in objects.items()}
+        def mutate():
+            observation['buffs'][0]['name'] = 'Changed caller string'
+            objects['items.rules'] = b'not JSON anymore'
+            choices.clear()
+        facts, evidence = _join_player_facts(observation, static, policy, objects, choices, mutate)
+        self.assertEqual(facts['buffs']['1'][0], name)
+        self.assertEqual(evidence['itemHashes'], hashes)
+
+
 class PlayerFactSourceShapeTests(unittest.TestCase):
     def test_original_pe_constructor_rva_and_version_constants(self):
         raw, tokens = fixture(); p = program(raw)

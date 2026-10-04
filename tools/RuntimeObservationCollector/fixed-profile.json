@@ -8,6 +8,184 @@
   "publishable": false,
   "methods": [
     {
+      "key": "materialItemName",
+      "owner": "Terraria.Lang",
+      "name": "GetItemName",
+      "token": 100663766,
+      "signatureHex": "000112868408",
+      "signatureSha256": "13d2a24c793623a2447402e4e18db11064cb4a9762bb9d6a5759ffae9a1c8a03",
+      "ilSha256": "aca8a5eabcb416f9973a9a543c3900e573c0cdabb68805bd88ba244aee79bd21"
+    },
+    {
+      "key": "mapInitialize",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "Initialize",
+      "token": 100671444,
+      "signatureHex": "000001",
+      "methodToken": "0x06001fd4",
+      "metadataOffset": 7878572,
+      "bodyOffset": 5369396,
+      "codeOffset": 5369408,
+      "codeBytes": 34033,
+      "ilSha256": "23e8aa2bcbeb1e92f7128db73d39ec134d5028ac6a2d5ed68a820990dec689fd",
+      "signatureOffset": 9700427,
+      "signatureSha256": "cf7605ed1bc735f6c825554154627467e1cac9df54cee8699218ed434603c568",
+      "localSignatureSha256": "1277f98d983363a05a1ddd7f57e270bb4ce23fec81e656ce5e0b3d1e15daec98"
+    },
+    {
+      "key": "materialLinkedAlternates",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_LinkedAlternates",
+      "token": 100668528,
+      "signatureHex": "200002",
+      "signatureSha256": "59a9a8765c535212b9ad71c5c8e1e24ffadbd3331fd04b3bbe1b121ecf6004cc",
+      "ilSha256": "b2ac4739411ce23f254db58f76c802ebdc51a82895dd26e6a0f365c2058f3158"
+    },
+    {
+      "key": "materialAlternates",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Alternates",
+      "token": 100668535,
+      "signatureHex": "20001512790112817c",
+      "signatureSha256": "f1ef0b6558b188b2e4994109c0fac18960ba672d32d5c8f72011117181cbc00e",
+      "ilSha256": "7da26e04a1accaa7a1e45d43d361f7d6275d7a3e362598e39a9306e7f92ec4f7"
+    },
+    {
+      "key": "materialGetStyleOverride",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_GetStyleOverride",
+      "token": 100668571,
+      "signatureHex": "2000129774",
+      "signatureSha256": "e228fa017ffe5b5ae5c3f6a1ef2f8a94ab569e710e2c2f60bdcd6349ef4e90b3",
+      "ilSha256": "10052e70869dcb3f8ab5e534995bde87a664e66b5194c8367ba26b14cf774b16"
+    },
+    {
+      "key": "materialSubTiles",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_SubTiles",
+      "token": 100668573,
+      "signatureHex": "20001512790112817c",
+      "signatureSha256": "f1ef0b6558b188b2e4994109c0fac18960ba672d32d5c8f72011117181cbc00e",
+      "ilSha256": "40ad47d8daddcfe48cd5fce01469377c549dbf59afaca86705417e595f30fddc"
+    },
+    {
+      "key": "materialStyleHorizontal",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleHorizontal",
+      "token": 100668585,
+      "signatureHex": "200002",
+      "signatureSha256": "59a9a8765c535212b9ad71c5c8e1e24ffadbd3331fd04b3bbe1b121ecf6004cc",
+      "ilSha256": "1e2470ec659a6d2031b678ad192ad1e054d526d1ba5a75d06ff4eec59737baed"
+    },
+    {
+      "key": "materialStyle",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Style",
+      "token": 100668587,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "8f7669988e378e1f8e9632cb54f6d823c57bd8d8470ec51e72cba4df2fdae6cf"
+    },
+    {
+      "key": "materialStyleWrapLimit",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleWrapLimit",
+      "token": 100668589,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "23b35c0a6465fc442a4bfdb23b4b426bfaf2f26f55210913423d9d03dacfb22a"
+    },
+    {
+      "key": "materialStyleLineSkip",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleLineSkip",
+      "token": 100668595,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "c47fd323b06829519819123575a0a925552b137869f5f6af70e5864cc82e2a79"
+    },
+    {
+      "key": "materialStyleMultiplier",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_StyleMultiplier",
+      "token": 100668597,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "9157bb222b78777c6c8fe524caafb4222aece4c0eefecf71a4df8ed406f8f6e3"
+    },
+    {
+      "key": "materialWidth",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Width",
+      "token": 100668599,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "1ded1831444bf9e422251bc22fa8a256ac058ddb15bfda50de12916ca83fc470"
+    },
+    {
+      "key": "materialHeight",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_Height",
+      "token": 100668601,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "fe9f09ef847cdde9621f725eae0cc1e44130b39341ceded9aaca503228503159"
+    },
+    {
+      "key": "materialRandomStyleRange",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_RandomStyleRange",
+      "token": 100668607,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "ffd683030abcf0e875afe9633bf75d7f4a61e8e232e24679388435d020d35cc8"
+    },
+    {
+      "key": "materialSpecificRandomStyles",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_SpecificRandomStyles",
+      "token": 100668609,
+      "signatureHex": "20001d08",
+      "signatureSha256": "ac81b4c8e3f13d2e86c78c2a7b2d5114ef862ea769e70b5c5dc53d4d72694d62",
+      "ilSha256": "99ee70cb4cd9a288d8b5fe86a38583537ad68fbe52e7ad50959ed75d62bef8ee"
+    },
+    {
+      "key": "materialCoordinateHeights",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinateHeights",
+      "token": 100668613,
+      "signatureHex": "20001d08",
+      "signatureSha256": "ac81b4c8e3f13d2e86c78c2a7b2d5114ef862ea769e70b5c5dc53d4d72694d62",
+      "ilSha256": "3f2803acd5a0dace55127838fe6186daf7d96a57f2376e1638c4eee9ceeef653"
+    },
+    {
+      "key": "materialCoordinateWidth",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinateWidth",
+      "token": 100668617,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "59f355dedb74480403ace4de0462930f62c9b0856c50520d4fe9f81c6edcf3b2"
+    },
+    {
+      "key": "materialCoordinatePadding",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinatePadding",
+      "token": 100668619,
+      "signatureHex": "200008",
+      "signatureSha256": "19e1bd1daf2ae492b895802f55c905ef2d25aea509c6010868e218adb408c010",
+      "ilSha256": "3a1df215376497b6042a623978d0d7c36e479cbf3f36537d7b76bb079e956e38"
+    },
+    {
+      "key": "materialCoordinatePaddingFix",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "get_CoordinatePaddingFix",
+      "token": 100668621,
+      "signatureHex": "2000119778",
+      "signatureSha256": "5635fa7e8954fa46e097048641cc56415b2fea465437e172da90548a418eefbd",
+      "ilSha256": "ce46554f15cefe7d3595b5b9673c55fad341fdb2d2bc1e0226177cde42603d69"
+    },
+    {
       "key": "localizedTextValue",
       "owner": "Terraria.Localization.LocalizedText",
       "name": "get_Value",
@@ -745,6 +923,232 @@
     }
   ],
   "fields": [
+    {
+      "key": "localizedText.EnglishValue",
+      "owner": "Terraria.Localization.LocalizedText",
+      "name": "<EnglishValue>k__BackingField",
+      "token": 67114913,
+      "signatureHex": "060e",
+      "signatureSha256": "89c0c2d74467289c8bf954f4cde47f4f794bcf8e6ee65e19cd0b275e47aca3ec"
+    },
+    {
+      "key": "sets.Deprecated",
+      "owner": "Terraria.ID.ItemID+Sets",
+      "name": "Deprecated",
+      "token": 67138169,
+      "signatureHex": "061d02",
+      "metadataOffset": 7704306,
+      "signatureOffset": 9826113,
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "localizedText.Key",
+      "owner": "Terraria.Localization.LocalizedText",
+      "name": "Key",
+      "token": 67114911,
+      "signatureHex": "060e",
+      "metadataOffset": 7471726,
+      "signatureOffset": 9659872,
+      "signatureSha256": "89c0c2d74467289c8bf954f4cde47f4f794bcf8e6ee65e19cd0b275e47aca3ec"
+    },
+    {
+      "key": "wallId.Count",
+      "owner": "Terraria.ID.WallID",
+      "name": "Count",
+      "token": 67126552,
+      "signatureHex": "0607",
+      "metadataOffset": 7588136,
+      "signatureOffset": 9674777,
+      "signatureSha256": "4e399d0536e9eb556ea05e7c19f52034fc44dc7eea2f3b5af2da5336ca9c9cf1"
+    },
+    {
+      "key": "map.tileOptions",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "tileOptionCounts",
+      "token": 67114862,
+      "signatureHex": "061d08",
+      "metadataOffset": 7471236,
+      "signatureOffset": 9825984,
+      "signatureSha256": "06e25f63357fc116270b45d61f244f668c462ff88a69763d6df9fb9c1b9cf865"
+    },
+    {
+      "key": "map.wallOptions",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "wallOptionCounts",
+      "token": 67114863,
+      "signatureHex": "061d08",
+      "metadataOffset": 7471246,
+      "signatureOffset": 9825984,
+      "signatureSha256": "06e25f63357fc116270b45d61f244f668c462ff88a69763d6df9fb9c1b9cf865"
+    },
+    {
+      "key": "map.tileLookup",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "tileLookup",
+      "token": 67114864,
+      "signatureHex": "061d07",
+      "metadataOffset": 7471256,
+      "signatureOffset": 9829784,
+      "signatureSha256": "b878df024ee6943cf99926fea0c53374872f3c020e5975baa91b988e4a166f58"
+    },
+    {
+      "key": "map.wallLookup",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "wallLookup",
+      "token": 67114865,
+      "signatureHex": "061d07",
+      "metadataOffset": 7471266,
+      "signatureOffset": 9829784,
+      "signatureSha256": "b878df024ee6943cf99926fea0c53374872f3c020e5975baa91b988e4a166f58"
+    },
+    {
+      "key": "map.colors",
+      "owner": "Terraria.Map.MapHelper",
+      "name": "colorLookup",
+      "token": 67114873,
+      "signatureHex": "061d118081",
+      "metadataOffset": 7471346,
+      "signatureOffset": 9826021,
+      "signatureSha256": "0a9164a81127ad146455e5f127dfeece5ce95056fe5823b7696271a1517e0579"
+    },
+    {
+      "key": "lang.mapLegend",
+      "owner": "Terraria.Lang",
+      "name": "_mapLegendCache",
+      "token": 67109221,
+      "signatureHex": "061d128684",
+      "metadataOffset": 7414826,
+      "signatureOffset": 9662593,
+      "signatureSha256": "59da67a6a5743ffc5cc74f98fdc0f8eafe054e7b8793308c23056b8435b9d247"
+    },
+    {
+      "key": "material.frameImportant",
+      "owner": "Terraria.Main",
+      "name": "tileFrameImportant",
+      "token": 67112081,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.tileSolid",
+      "owner": "Terraria.Main",
+      "name": "tileSolid",
+      "token": 67112069,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.tileSolidTop",
+      "owner": "Terraria.Main",
+      "name": "tileSolidTop",
+      "token": 67112068,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.tileSand",
+      "owner": "Terraria.Main",
+      "name": "tileSand",
+      "token": 67112161,
+      "signatureHex": "061d02",
+      "signatureSha256": "a66781d764e6271cf1838967e4722d4f99c23afa0ee29a92320d6b6f73b299b7"
+    },
+    {
+      "key": "material.placeStyle",
+      "owner": "Terraria.Item",
+      "name": "placeStyle",
+      "token": 67110059,
+      "signatureHex": "0608",
+      "signatureSha256": "557c754d26e2667287367a856ea5fcd584f35ab796d24a6a875d1648a4637d23"
+    },
+    {
+      "key": "tileId.Count",
+      "owner": "Terraria.ID.TileID",
+      "name": "Count",
+      "token": 67128121,
+      "signatureHex": "0607",
+      "signatureSha256": "4e399d0536e9eb556ea05e7c19f52034fc44dc7eea2f3b5af2da5336ca9c9cf1"
+    },
+    {
+      "key": "material.registry",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_data",
+      "token": 67113101,
+      "signatureHex": "061512790112817c",
+      "signatureSha256": "e3cc056a4d2e007d5f2c851b86cab4c2988a365a6ea33327c44e55e4174d9300"
+    },
+    {
+      "key": "material.baseObject",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_baseObject",
+      "token": 67113102,
+      "signatureHex": "0612817c",
+      "signatureSha256": "05420b5a63709098961e22deaee8dca876434d096eb24108cdd7319045c9ef73"
+    },
+    {
+      "key": "material._alternates",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_alternates",
+      "token": 67113079,
+      "signatureHex": "06128188",
+      "signatureSha256": "2ee1ed938b999568dae3a538ce790f65a1e8692d515b9057b355f7637a7d1861"
+    },
+    {
+      "key": "material._placementHooks",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_placementHooks",
+      "token": 67113084,
+      "signatureHex": "061281a0",
+      "signatureSha256": "10272135a51595b52689ff28ca0ff86b4ccd049ac403987ba0986f0bce774fb8"
+    },
+    {
+      "key": "material._subTiles",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_subTiles",
+      "token": 67113085,
+      "signatureHex": "0612819c",
+      "signatureSha256": "269f491f24f7a5d7f1c6930dcb87636faec4b36ab7db0e2d520adaa9854531d5"
+    },
+    {
+      "key": "material._tileObjectStyle",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_tileObjectStyle",
+      "token": 67113087,
+      "signatureHex": "061281a4",
+      "signatureSha256": "a53502dc3e6f9d01892aefe6ccb0eca3fe5ff023f76e39b2fd9fd0f209a0afb7"
+    },
+    {
+      "key": "material._tileObjectBase",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_tileObjectBase",
+      "token": 67113088,
+      "signatureHex": "0612818c",
+      "signatureSha256": "8c349eb20a003d3d2d93fa85b6b192ddeabdf0ef0046e80e26a268b225b74d2a"
+    },
+    {
+      "key": "material._tileObjectCoords",
+      "owner": "Terraria.ObjectData.TileObjectData",
+      "name": "_tileObjectCoords",
+      "token": 67113089,
+      "signatureHex": "061281a8",
+      "signatureSha256": "f48f5beb177c16df9290d2a5895c1da2fbbcb882e07d40030e2c54f792e96896"
+    },
+    {
+      "key": "material.point16X",
+      "owner": "Terraria.DataStructures.Point16",
+      "name": "X",
+      "token": 67133244,
+      "signatureHex": "0606",
+      "signatureSha256": "53bd9133146631a2a2a89188f7d799e4ab85b473b7e927dd8b7782d91fe4ee0c"
+    },
+    {
+      "key": "material.point16Y",
+      "owner": "Terraria.DataStructures.Point16",
+      "name": "Y",
+      "token": 67133245,
+      "signatureHex": "0606",
+      "signatureSha256": "53bd9133146631a2a2a89188f7d799e4ab85b473b7e927dd8b7782d91fe4ee0c"
+    },
     {
       "key": "lang.prefix",
       "owner": "Terraria.Lang",
@@ -1973,5 +2377,15 @@
     "Terraria.GameContent.Dyes.ReflectiveArmorShaderData",
     "Terraria.GameContent.Dyes.TeamArmorShaderData",
     "Terraria.GameContent.Dyes.TwilightDyeShaderData"
-  ]
+  ],
+  "xnaColorField": {
+    "key": "color.packed",
+    "owner": "Microsoft.Xna.Framework.Color",
+    "name": "packedValue",
+    "token": 67110387,
+    "signatureHex": "0609",
+    "metadataOffset": 363602,
+    "signatureOffset": 622655,
+    "signatureSha256": "9fdded952da6a0b5e0b5caa90e194b5b2da46092b26a9e382c8d895c662d9b0f"
+  }
 }

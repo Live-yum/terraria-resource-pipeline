@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import json
 import math
 from pathlib import Path
 import hashlib
@@ -17,7 +18,7 @@ import struct
 from .accessory_prefix_semantics import extract_accessory_prefix_semantics, _instance_field
 from .item_assembler import BOOL_FIELDS, GROUPS, POOLS, assemble_item_resources
 from .item_dispatch_sets import ItemDispatchSetLimits, _bool_factory
-from .item_texture_aliases import _Program, _Budget, _CheckpointCancelled, _constant, _linear_store
+from .item_texture_aliases import _Program, _Budget, _CheckpointCancelled, _constant, _linear_store, _shape
 from .prefix_coefficient_semantics import extract_prefix_coefficient_semantics, NAMES
 from .prefix_group_semantics import extract_prefix_group_semantics
 from .prefix_pool_semantics import extract_prefix_pool_semantics
@@ -51,6 +52,8 @@ CONTEXT_FIELDS = ('gameMode', 'difficulty', 'expertMode', 'masterMode', 'mechdus
                   'activeWorldFileDataPresent', 'difficultyOverride', 'dedServ', 'netMode', 'localPlayerIndex')
 COEFFICIENT_DEFAULTS = {key: 1 if arg < 8 else 0 for arg, key in NAMES.items()}
 OBSERVED_ITEM_SETS = (*ITEM_SETS, 'IsAMaterial')
+OBSERVED_ITEM_SETS_V2 = (*OBSERVED_ITEM_SETS, 'Deprecated')
+SOURCE_ITEM_SETS = (*ITEM_SETS, 'Deprecated')
 ACCESSORY_KEYS = ('defense', 'maxMana', 'critBonus', 'damageBonus', 'moveBonus', 'meleeSpeedBonus')
 RESEARCH_POLICY = 'observed-research-out-count-v1'
 
@@ -155,7 +158,7 @@ def _item_sets(p, count):
     method = p.method('Terraria.ID.ItemID+Sets', '.cctor', b'\x00\x00\x01')
     factory_field = p.field('Terraria.ID.ItemID+Sets', 'Factory')
     result, proof = {}, {}
-    for name in ITEM_SETS:
+    for name in SOURCE_ITEM_SETS:
         token = p.field('Terraria.ID.ItemID+Sets', name, b'\x06\x1d\x02')
         store = _linear_store(method, token, 0)[0]
         end = next(n for n, ins in enumerate(method['instructions']) if ins.offset == store.offset)
@@ -184,6 +187,57 @@ def _item_sets(p, count):
                     'preconditions': ['selected store is reached normally', transform['precondition'],
                                       'no mutation of RVA literals before copying'],
                     'wholeInitializerProven': False, 'finalRuntimeValuesProven': False}
+
+
+def _deprecated_air_structure(defaults, air, type_token, stack_token, deprecated_token, count_token,
+                              defaults_max_stack, air_max_stack):
+    """Local call-path shape only. Never summarize the recursive SetDefaults call."""
+    _need(not defaults['local'] and not defaults['eh'] and not air['local'] and not air['eh']
+          and air['signature'] == b'\x20\x00\x01', 'deprecated call-path method contract')
+    _need(defaults_max_stack >= 2 and air_max_stack >= 3, 'deprecated call-path maxstack')
+    suffix = defaults['instructions'][-16:]
+    _shape(suffix, [2, (0x7b, type_token), 0x16, (0x31, '@15'),
+        2, (0x7b, type_token), (0x7e, count_token), (0x2f, '@15'),
+        (0x7e, deprecated_token), 2, (0x7b, type_token), 0x91, (0x2c, '@15'),
+        2, (0x28, air['token']), 0x2a])
+    _shape(air['instructions'], [2, (0x7b, type_token), (0x2d, '@6'),
+        2, (0x7b, stack_token), (0x2c, '@10'), 2, 0x16, 0x14,
+        (0x28, defaults['token']), 0x2a])
+    return {'status': 'BOUND_LOCAL_DEPRECATED_AIR_CALL_PATH',
+            'scope': 'SetDefaults guarded suffix and complete TurnToAir call-dispatch shape only',
+            'setDefaults': defaults['evidence'], 'turnToAir': air['evidence'],
+            'suffixEntryIlOffset': suffix[0].offset, 'deprecatedReadIlOffset': suffix[8].offset,
+            'turnToAirCallIlOffset': suffix[14].offset,
+            'conditionalCall': 'on suffix entry with 0 < this.type < Count and Deprecated[this.type], call this.TurnToAir()',
+            'turnToAirDispatch': 'if this.type != 0 or this.stack != 0, call this.SetDefaults(0, null)',
+            'setDefaultsWholeEffectsProven': False, 'turnToAirFinalEffectsProven': False,
+            'normalReturnGuaranteed': False, 'runtimeInitializationVerified': False,
+            'preconditions': ['suffix entered normally with empty evaluation stack and a nonnull well-typed Item',
+                'Count and Deprecated field reads have completed normally and cover this.type',
+                'no concurrent mutation between range checks, registry read, and call',
+                'call/recursive SetDefaults effects and normal return are not summarized here',
+                'final resolvedType 0 must be independently observed; this call-path shape does not prove it']}
+
+
+def _deprecated_air_source(p):
+    defaults = p.method('Terraria.Item', 'SetDefaults')
+    air = p.method('Terraria.Item', 'TurnToAir')
+    pins = ((defaults, 0x06000797, 'da79fd6f1fec736ee68262748be3a76dcf131b01dfed8bec26c2b53b6ec611ca',
+             '347e7c5654b76d6e2da9fe88a137adefbf9d2eb929a92e485284e5210c0eb29e'),
+            (air, 0x060007b8, 'bf13ca7edfd73922341d783eea3732d3fe766f5ab0ff19a37dc367f2b3b28170',
+             '0c9373898d2dd1c85902837a9e979cb88484e2548a008ad2b2176cc7119d09df'))
+    for method, token, il_hash, signature_hash in pins:
+        _need(method['token'] == token and method['evidence']['ilSha256'] == il_hash
+              and method['evidence']['signatureSha256'] == signature_hash, 'deprecated source method pin')
+    type_token, stack_token = 0x0400049b, 0x040004a3
+    _instance_field(p, type_token, 'Terraria.Item', 'type', b'\x06\x08')
+    _instance_field(p, stack_token, 'Terraria.Item', 'stack', b'\x06\x08')
+    deprecated = p.field('Terraria.ID.ItemID+Sets', 'Deprecated', b'\x06\x1d\x02')
+    count = p.field('Terraria.ID.ItemID', 'Count', b'\x06\x06')
+    def maxstack(method):
+        return 8 if method['header'] == 1 else p.meta.reader.uint(method['evidence']['bodyOffset'] + 2, 2)
+    return _deprecated_air_structure(defaults, air, type_token, stack_token, deprecated, count,
+                                     maxstack(defaults), maxstack(air))
 
 
 def _source_bindings(p):
@@ -244,12 +298,17 @@ def _extract_static(raw, checkpoint):
     prefix_domain, prefix_proof = _named_domain(ids, evidence, unsupported, 'PrefixID', prefix_count)
     _need(prefix_domain == list(range(1, prefix_count)), 'unnamed prefix ID cannot be filled from Count')
     sets, set_proof = _item_sets(p, count)
+    deprecated_ids = [n for n, value in enumerate(sets['Deprecated']) if value]
+    _need(set(deprecated_ids) <= set(domain), 'Deprecated source IDs outside positive named domain')
+    deprecated_source = _deprecated_air_source(p)
+    deprecated_source.update(sourceDeprecatedIds=deprecated_ids, allSourceDeprecatedIdsNamedPositive=True)
     return {'gameVersion': GAME_VERSION, 'itemCount': count, 'prefixCount': prefix_count,
             'itemDomain': domain, 'prefixDomain': [0, *prefix_domain],
             'groups': proofs['groups']['groups'], 'pools': proofs['pools']['pools'], 'itemSets': sets,
             'priorityDomain': proofs['priorities']['priorityDomain'], 'priorities': proofs['priorities']['priorities'],
             'coefficients': proofs['coefficients']['records'], 'accessories': proofs['accessories']['effects'],
             'proofs': proofs, 'itemSetProof': set_proof, 'itemDomainProof': domain_proof,
+            'deprecatedAirSource': deprecated_source,
             'prefixDomainProof': prefix_proof, 'sourceBindings': _source_bindings(p)}
 
 
@@ -292,9 +351,24 @@ def _prefixes(observation, static, policy):
 def _join_observed_item_facts(observation, static, policy, checkpoint=lambda: None):
     """Internal fixture-test seam. Public callers cannot provide static dictionaries."""
     raw = _bounded_json(observation, checkpoint)
-    _need(_exact(observation, ROOT_FIELDS), 'unexpected fixed collector root schema')
-    _need(_int(observation['schemaVersion'], 1, 1) and observation['kind'] == 'pinned-item-player-data-observation-fragment'
-          and observation['status'] == 'PARTIAL', 'unsupported collector schema/kind/status')
+    observation = json.loads(raw)
+    _need(type(observation) is dict and _int(observation.get('schemaVersion'), 1, 2), 'unsupported collector schema version')
+    version = observation['schemaVersion']
+    expected = ROOT_FIELDS if version == 1 else ROOT_FIELDS | {'materialObservation', 'mapObservation'}
+    _need(_exact(observation, expected), 'unexpected fixed collector root schema')
+    expected_kind = 'pinned-item-player-data-observation-fragment' if version == 1 else 'pinned-consumer-data-observation-fragment'
+    _need(observation['kind'] == expected_kind and observation['status'] == 'PARTIAL', 'unsupported collector schema/kind/status')
+    if version == 2:
+        for key, kind in (('materialObservation', 'pinned-material-observation-fragment'), ('mapObservation', 'pinned-map-observation-fragment')):
+            part = observation[key]
+            _need(type(part) is dict and type(part.get('schemaVersion')) is int and part['schemaVersion'] == 1
+                  and part.get('kind') == kind and part.get('status') == 'PARTIAL'
+                  and all(part.get(k) is False for k in FALSE_GATES)
+                  and all(part.get(k) == observation[k] for k in ('sourceSha256', 'gameVersion', 'culture', 'context')),
+                  'unsupported or mismatched additional observation fragment')
+        # These fragments are retained by the root observation hash, not silently
+        # promoted into material/map consumer evidence by the Item-only join.
+
     _need(observation['sourceSha256'] == SOURCE_SHA256 and observation['gameVersion'] == static['gameVersion']
           and observation['culture'] == 'zh-Hans', 'observation source/version/culture mismatch')
     _need(all(observation[key] is False for key in FALSE_GATES), 'observation must not claim trust/acceptance')
@@ -327,9 +401,11 @@ def _join_observed_item_facts(observation, static, policy, checkpoint=lambda: No
           and len(observation['collectorExecutableSha256']) == 64
           and all(c in '0123456789abcdef' for c in observation['collectorExecutableSha256']), 'collector diagnostics')
     registry_receipts = {}
-    for kind, names in (('groups', GROUPS), ('itemSets', ITEM_SETS)):
+    compared_sets = ITEM_SETS if version == 1 else SOURCE_ITEM_SETS
+    observed_sets = OBSERVED_ITEM_SETS if version == 1 else OBSERVED_ITEM_SETS_V2
+    for kind, names in (('groups', GROUPS), ('itemSets', compared_sets)):
         table = observation[kind]
-        _need(_exact(table, OBSERVED_ITEM_SETS if kind == 'itemSets' else names), 'incomplete observed ' + kind)
+        _need(_exact(table, observed_sets if kind == 'itemSets' else names), 'incomplete observed ' + kind)
         registry_receipts[kind] = {}
         for name in names:
             values = table[name]
@@ -361,17 +437,30 @@ def _join_observed_item_facts(observation, static, policy, checkpoint=lambda: No
         priorities[name] = {**copy.deepcopy(static['priorities'][name]), 'values': copy.deepcopy(observation['priorities'][name])}
     records = observation['records']
     _need(type(records) is list and len(records) == len(domain), 'record count differs from named Item domain; no row may be dropped')
-    identities, seen, normalized, absence = set(domain), set(), [], []
+    identities, seen, normalized, absence, exclusions = set(domain), set(), [], [], []
+    source_deprecated = {n for n, value in enumerate(static['itemSets']['Deprecated']) if value} if version == 2 else set()
+    _need(source_deprecated <= identities, 'Deprecated source IDs outside positive named domain')
     for row in records:
         checkpoint()
         _need(_exact(row, ('requestedId', 'resolvedType', 'name', 'persistentIdPresent', 'persistentId',
                           'research', 'gameplay', 'variantIsNull')), 'unexpected raw item record schema')
         identity = row['requestedId']
         _need(_int(identity, 1, count - 1) and identity in identities and identity not in seen
-              and _int(row['resolvedType'], 1, count - 1) and row['resolvedType'] == identity
-              and row['variantIsNull'] is True, 'duplicate/foreign/remapped/variant Item record')
-        _need(_text(row['name']) and row['persistentIdPresent'] is True and _text(row['persistentId']),
-              'missing observed Item name/persistent ID; no guessing permitted')
+              and _int(row['resolvedType'], 0, count - 1) and row['variantIsNull'] is True,
+              'duplicate/foreign/variant Item record')
+        excluded = version == 2 and identity in source_deprecated and row['resolvedType'] == 0
+        _need(identity not in source_deprecated or excluded, 'source Deprecated Item did not resolve to observed air')
+        _need(excluded or row['resolvedType'] == identity, 'unexplained air or remapped Item record')
+        if excluded:
+            # These remain raw diagnostics, never fabricated consumer records.
+            _need((row['name'] is None or _text(row['name'], empty=True))
+                  and type(row['persistentIdPresent']) is bool
+                  and (row['persistentId'] is None or _text(row['persistentId'], empty=True))
+                  and (row['persistentIdPresent'] or row['persistentId'] is None),
+                  'malformed excluded Item identity diagnostics')
+        else:
+            _need(_text(row['name']) and row['persistentIdPresent'] is True and _text(row['persistentId']),
+                  'missing observed Item name/persistent ID; no guessing permitted')
         research = row['research']
         _need(_exact(research, ('present', 'count')) and type(research['present']) is bool and _int(research['count'])
               and (research['present'] or research['count'] == 0), 'invalid research observation/absent out-count')
@@ -391,12 +480,31 @@ def _join_observed_item_facts(observation, static, policy, checkpoint=lambda: No
                 _need(signature in ranges and _int(value, *ranges[signature]),
                       'observed integral field outside source primitive range: ' + name)
         seen.add(identity)
-        normalized.append({'id': identity, 'name': row['name'], 'persistentId': row['persistentId'],
-                           'research': research['count'], 'gameplay': copy.deepcopy(row['gameplay'])})
-    _need(seen == identities, 'missing selected Item record')
+        if excluded:
+            exclusions.append({'reason': 'source-and-observed-Deprecated-with-observed-resolvedType-zero',
+                               'rawRecord': copy.deepcopy(row), 'rawRecordSha256': sha256(canonical_json(row))})
+        else:
+            normalized.append({'id': identity, 'name': row['name'], 'persistentId': row['persistentId'],
+                               'research': research['count'], 'gameplay': copy.deepcopy(row['gameplay'])})
+    _need(seen == identities, 'missing named raw Item record')
     normalized.sort(key=lambda row: row['id']); absence.sort(key=lambda row: row['id'])
+    exclusions.sort(key=lambda entry: entry['rawRecord']['requestedId'])
+    selected_domain = [row['id'] for row in normalized]
+    _need(selected_domain, 'no non-air selected Item records')
+    selection = {'policy': 'positive-named-identity-preserving-v1' if version == 1 else
+                  'positive-named-minus-source-and-observed-deprecated-air-v2',
+                 'collectorSchemaVersion': version, 'rawNamedDomain': list(domain),
+                 'rawNamedRows': len(records), 'selectedDomain': selected_domain,
+                 'excludedDomain': [entry['rawRecord']['requestedId'] for entry in exclusions],
+                 'excludedRows': exclusions, 'allNamedRawRowsAccountedFor': True,
+                 'sourceDeprecatedDomain': sorted(source_deprecated) if version == 2 else None,
+                 'everySourceDeprecatedIdObservedAir': version == 2,
+                 'expectedNonAirNamedCount': len(domain) - len(source_deprecated),
+                 'deprecatedAirSource': static['deprecatedAirSource'] if version == 2 else None,
+                 'allSelectableGameItemsProven': False,
+                 'scope': 'finite source/observation-bound representation policy; never runtime or full Item effect acceptance'}
     prefixes, prefix_receipt = _prefixes(observation, static, policy)
-    adapter_input = {'gameVersion': static['gameVersion'], 'itemCount': count, 'itemDomain': list(domain),
+    adapter_input = {'gameVersion': static['gameVersion'], 'itemCount': count, 'itemDomain': selected_domain,
                      'records': normalized, 'prefixes': prefixes, 'pools': copy.deepcopy(observation['pools']),
                      'groups': copy.deepcopy(observation['groups']),
                      'itemSets': {key: copy.deepcopy(observation['itemSets'][key]) for key in ITEM_SETS},
@@ -407,13 +515,16 @@ def _join_observed_item_facts(observation, static, policy, checkpoint=lambda: No
     inputs, adapter_receipt = adapt_observed_items(adapter_input)
     receipt = {'schemaVersion': 1, 'status': 'ITEM_OBSERVATION_DATA_JOINED',
                'sourceSha256': SOURCE_SHA256, 'observationSha256': sha256(raw),
-               'normalizedSha256': sha256(canonical_json(inputs)), 'selectedItemRows': len(domain),
-               'selectionScope': 'positive named ItemID Constant values only, not a universal selectable-item proof',
+               'observationDigestEncoding': 'canonical-json-utf8-v1',
+               'normalizedSha256': sha256(canonical_json(inputs)), 'selectedItemRows': len(selected_domain),
+               'itemSelection': selection,
+               'selectionScope': selection['policy'] + '; not a universal selectable-item proof',
                'itemDomainEvidence': static['itemDomainProof'], 'prefixDomainEvidence': static['prefixDomainProof'],
                'sourceProofs': static['proofs'], 'itemSetProof': static['itemSetProof'],
                'sourceBindings': static['sourceBindings'], 'applicationPolicy': policy['receipt'],
                'registryComparisons': registry_receipts, 'prefixProjection': prefix_receipt,
                'researchRepresentation': {'policy': RESEARCH_POLICY, 'absenceRows': absence,
+                    'absenceDomain': 'all named raw rows, including separately retained deprecated-air exclusions',
                     'rule': 'observed absent membership plus observed out-count 0 encodes consumer research 0; presence is not invented'},
                'observationContext': {key: copy.deepcopy(observation[key]) for key in ('culture', 'context', 'worldFlags', 'randomSeed')},
                'adapterReceipt': adapter_receipt, 'executedInput': False, 'observationAuthenticated': False,
@@ -437,7 +548,7 @@ def adapt_observed_item_facts(observation, *, pe_bytes, app_sources, checkpoint=
     prefixNames). No claimed caller-supplied static table or trust bit is accepted.
     """
     checkpoint()
-    _bounded_json(observation, checkpoint)
+    observation = json.loads(_bounded_json(observation, checkpoint))
     raw = read_assembly_bytes(pe_bytes, SemanticLimits(), checkpoint) if isinstance(pe_bytes, Path) else pe_bytes
     _need(type(raw) is bytes and len(raw) <= 128 * 1024 * 1024, 'bounded PE bytes or Path required')
     policy = _app_policy(app_sources)

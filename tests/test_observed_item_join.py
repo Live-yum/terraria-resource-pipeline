@@ -6,12 +6,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from observed_item_join_fixture import original_join
+from observed_item_join_fixture import original_join, original_join_v2
 from resource_pipeline.item_assembler import assemble_item_resources, GROUPS, POOLS
 from resource_pipeline.observed_item_join import (
     _join_observed_item_facts, _named_domain, _app_policy, _bounded_json, _extract_static,
     adapt_observed_item_facts, assemble_observed_item_resources, APP_SOURCE_PINS,
-    FALSE_GATES, COEFFICIENT_DEFAULTS, SOURCE_SHA256)
+    FALSE_GATES, COEFFICIENT_DEFAULTS, SOURCE_SHA256, _deprecated_air_structure)
+from resource_pipeline.static_il import Instruction, ILUnsupported
+from dataclasses import replace
 from resource_pipeline.security import PipelineError, canonical_json, sha256
 
 
@@ -202,6 +204,149 @@ class ObservedItemJoinTests(unittest.TestCase):
         self.assertEqual(set(objects), {'items.catalog', 'items.rules', 'items.categories'})
         self.assertIs(result['publishable'], False)
 
+    def test_v2_fragments_are_versioned_partial_hash_bound_diagnostics(self):
+        observation, static, policy = original_join_v2()
+        inputs, receipt = self.join(observation, static, policy)
+        self.assertEqual(len(inputs['records']), 3)
+        for key in ('materialObservation', 'mapObservation'):
+            bad = copy.deepcopy(observation); bad[key]['complete'] = True
+            with self.assertRaises(PipelineError): self.join(bad, static, policy)
+            bad = copy.deepcopy(observation); bad[key]['culture'] = 'en-US'
+            with self.assertRaises(PipelineError): self.join(bad, static, policy)
+        bad = copy.deepcopy(observation); bad['schemaVersion'] = 1
+        with self.assertRaises(PipelineError): self.join(bad, static, policy)
+
+    def test_v2_deprecated_air_rows_are_retained_and_explicitly_excluded(self):
+        observation, static, policy = original_join_v2(deprecated_air=True)
+        before = copy.deepcopy((observation, static, policy))
+        inputs, receipt = self.join(observation, static, policy)
+        self.assertEqual(inputs['itemDomain'], [1, 3])
+        self.assertEqual([row['id'] for row in inputs['records']], [1, 3])
+        self.assertEqual(inputs['groups']['Magic'], [])
+        selection = receipt['itemSelection']
+        self.assertEqual(selection['rawNamedDomain'], [1, 2, 3])
+        self.assertEqual(selection['rawNamedRows'], 3)
+        self.assertEqual(selection['selectedDomain'], [1, 3])
+        self.assertEqual(selection['excludedDomain'], [2])
+        self.assertEqual(selection['sourceDeprecatedDomain'], [2])
+        self.assertIs(selection['allNamedRawRowsAccountedFor'], True)
+        self.assertIs(selection['everySourceDeprecatedIdObservedAir'], True)
+        self.assertEqual(selection['excludedRows'][0]['rawRecord'], observation['records'][1])
+        self.assertEqual(selection['excludedRows'][0]['rawRecordSha256'], sha256(canonical_json(observation['records'][1])))
+        self.assertIsNone(selection['excludedRows'][0]['rawRecord']['name'])
+        self.assertIsNone(selection['excludedRows'][0]['rawRecord']['persistentId'])
+        self.assertEqual(receipt['researchRepresentation']['absenceRows'], [{'id': 2, 'present': False, 'observedOutCount': 0}])
+        self.assertEqual(receipt['selectedItemRows'], 2)
+        self.assertEqual(selection['deprecatedAirSource']['preconditions'], ['original fixture call precondition'])
+        self.assertIs(selection['deprecatedAirSource']['turnToAirFinalEffectsProven'], False)
+        self.assertEqual(json.loads(assemble_item_resources(inputs)[0]['items.catalog'])[0], [1, 3])
+        for key in ('sourceSemanticsVerified', 'runtimeInitializationVerified', 'complete', 'publishable'):
+            self.assertIs(receipt[key], False)
+        self.assertEqual((observation, static, policy), before)
+
+    def test_v2_never_excludes_missing_rows_remaps_or_unexplained_air(self):
+        edits = [lambda o: o['records'].pop(1), lambda o: o['records'].pop(0),
+                 lambda o: o['records'].append(copy.deepcopy(o['records'][1])),
+                 lambda o: o['records'][1].update(requestedId=1),
+                 lambda o: o['records'][1].update(resolvedType=2),
+                 lambda o: o['records'][1].update(resolvedType=3),
+                 lambda o: o['records'][0].update(resolvedType=0),
+                 lambda o: o['records'][0].update(resolvedType=3),
+                 lambda o: o['records'][1].update(variantIsNull=False),
+                 lambda o: o['records'][1].update(persistentIdPresent=False, persistentId='Invented hidden value'),
+                 lambda o: o['records'][1].update(name=2),
+                 lambda o: o['records'][1]['research'].update(count=5),
+                 lambda o: o['records'][1]['gameplay'].pop('damage'),
+                 lambda o: o['records'][1]['gameplay'].update(accessory=0),
+                 lambda o: o['records'][1]['gameplay'].update(knockBack=.1)]
+        for edit in edits:
+            o, s, p = original_join_v2(deprecated_air=True); edit(o)
+            with self.subTest(edit=edit), self.assertRaises(PipelineError): self.join(o, s, p)
+
+    def test_v2_deprecated_array_is_required_complete_typed_and_source_equal(self):
+        edits = [lambda o: o['itemSets'].pop('Deprecated'), lambda o: o['itemSets']['Deprecated'].pop(),
+                 lambda o: o['itemSets']['Deprecated'].__setitem__(0, True),
+                 lambda o: o['itemSets']['Deprecated'].__setitem__(2, False),
+                 lambda o: o['itemSets']['Deprecated'].__setitem__(1, True),
+                 lambda o: o['itemSets']['Deprecated'].__setitem__(2, 1)]
+        for edit in edits:
+            o, s, p = original_join_v2(deprecated_air=True); edit(o)
+            with self.subTest(edit=edit), self.assertRaises(PipelineError): self.join(o, s, p)
+        o, s, p = original_join_v2(deprecated_air=True)
+        s['itemSets']['Deprecated'][2] = False
+        with self.assertRaises(PipelineError): self.join(o, s, p)
+        # Source membership never substitutes for a missing observed array.
+        o, s, p = original_join_v2(deprecated_air=True)
+        o['itemSets']['Deprecated'] = []
+        with self.assertRaises(PipelineError): self.join(o, s, p)
+
+    def test_v1_remains_exact_five_sets_identity_preserving_without_filtering(self):
+        observation, static, policy = original_join()
+        static['itemSets']['Deprecated'][2] = True
+        inputs, receipt = self.join(observation, static, policy)
+        self.assertEqual(inputs['itemDomain'], [1, 2, 3])
+        self.assertEqual(receipt['itemSelection']['excludedRows'], [])
+        self.assertEqual(receipt['itemSelection']['policy'], 'positive-named-identity-preserving-v1')
+        self.assertIsNone(receipt['itemSelection']['sourceDeprecatedDomain'])
+        observation['records'][1]['resolvedType'] = 0
+        with self.assertRaises(PipelineError): self.join(observation, static, policy)
+        observation['records'][1]['resolvedType'] = 2
+        observation['itemSets']['Deprecated'] = static['itemSets']['Deprecated']
+        with self.assertRaises(PipelineError): self.join(observation, static, policy)
+
+    def test_original_deprecated_call_shapes_do_not_claim_callee_effects(self):
+        # Original symbolic instructions, with invented tokens/offsets, exercise
+        # the local shape recognizer without copying or executing a game body.
+        def instructions(pattern):
+            return [Instruction(n * 4, op, operand, n * 4 + 4) for n, (op, operand) in enumerate(pattern)]
+        defaults = {'token': 101, 'signature': b'original', 'local': b'', 'eh': False, 'evidence': {'original': 'defaults'},
+                    'instructions': instructions([(2,None),(0x7b,11),(0x16,None),(0x31,60),
+                        (2,None),(0x7b,11),(0x7e,14),(0x2f,60),(0x7e,13),(2,None),
+                        (0x7b,11),(0x91,None),(0x2c,60),(2,None),(0x28,102),(0x2a,None)])}
+        air = {'token': 102, 'signature': b'\x20\x00\x01', 'local': b'', 'eh': False, 'evidence': {'original': 'air'},
+               'instructions': instructions([(2,None),(0x7b,11),(0x2d,24),(2,None),(0x7b,12),(0x2c,40),
+                                            (2,None),(0x16,None),(0x14,None),(0x28,101),(0x2a,None)])}
+        def run(d=defaults, a=air, dm=2, am=3): return _deprecated_air_structure(d,a,11,12,13,14,dm,am)
+        result = run()
+        for key in ('setDefaultsWholeEffectsProven', 'turnToAirFinalEffectsProven', 'normalReturnGuaranteed'):
+            self.assertIs(result[key], False)
+        self.assertTrue(result['preconditions'])
+        for who, index, change in [('defaults', 8, {'operand': 99}), ('defaults', 12, {'opcode': 0x2d}),
+                                  ('defaults', 14, {'operand': 99}), ('air', 8, {'opcode': 0x16}),
+                                  ('air', 9, {'operand': 99}), ('air', 2, {'operand': 40})]:
+            d, a = copy.deepcopy(defaults), copy.deepcopy(air)
+            target = d if who == 'defaults' else a
+            target['instructions'][index] = replace(target['instructions'][index], **change)
+            with self.subTest(who=who,index=index), self.assertRaises((PipelineError, ILUnsupported)): run(d,a)
+        with self.assertRaises(PipelineError): run(dm=1)
+        with self.assertRaises(PipelineError): run(am=2)
+        changed = copy.deepcopy(air); changed['eh'] = True
+        with self.assertRaises(PipelineError): run(a=changed)
+
+    def test_checkpoint_cannot_change_hashed_air_selection(self):
+        ready = [False]
+        def snapshot(*args):
+            raw = _bounded_json(*args); ready[0] = True; return raw
+        observation, static, policy = original_join_v2(deprecated_air=True)
+        deprecated = next(row for row in observation['records'] if row['requestedId'] == 2)
+        deprecated['resolvedType'] = 2
+        calls = [0]
+        def mutate():
+            if ready[0]:
+                calls[0] += 1
+                deprecated['resolvedType'] = 0
+        with patch('resource_pipeline.observed_item_join._bounded_json', side_effect=snapshot):
+            with self.assertRaises(PipelineError):
+                _join_observed_item_facts(observation, static, policy, mutate)
+        self.assertGreater(calls[0], 0)
+        observation, static, policy = original_join_v2(deprecated_air=True); ready[0] = False
+        expected = sha256(canonical_json(observation))
+        def change_name():
+            if ready[0]: observation['records'][0]['name'] = 'Changed caller name'
+        with patch('resource_pipeline.observed_item_join._bounded_json', side_effect=snapshot):
+            _, receipt = _join_observed_item_facts(observation, static, policy, change_name)
+        self.assertEqual(receipt['observationSha256'], expected)
+
     @unittest.skipUnless(os.environ.get('TERRARIA_OBSERVED_ITEM_PE') and os.environ.get('TERRARIA_CONSUMER_ROOT'),
                          'optional private data-only PE and current application source checks')
     def test_private_pinned_source_facts_and_policy_only(self):
@@ -212,6 +357,12 @@ class ObservedItemJoinTests(unittest.TestCase):
         self.assertEqual(len(static['itemDomain']), 6195); self.assertEqual(static['itemCount'], 6196)
         self.assertEqual(len(static['priorityDomain']), 20); self.assertEqual(static['prefixCount'], 98)
         self.assertEqual(len(static['coefficients']), 98); self.assertEqual(len(static['accessories']), 19)
+        deprecated = static['deprecatedAirSource']['sourceDeprecatedIds']
+        self.assertEqual(len(deprecated), 28)
+        self.assertTrue(set(deprecated) <= set(static['itemDomain']))
+        self.assertEqual(len(static['itemDomain']) - len(deprecated), 6167)
+        self.assertEqual(static['deprecatedAirSource']['deprecatedReadIlOffset'], 1916)
+        self.assertIs(static['deprecatedAirSource']['turnToAirFinalEffectsProven'], False)
         policy = _app_policy({name: (app/name).read_bytes() for name in APP_SOURCE_PINS})
         self.assertEqual(policy['zeroCaption'], '无前缀')
         # This is intentionally not an authentic runtime observation, so do not

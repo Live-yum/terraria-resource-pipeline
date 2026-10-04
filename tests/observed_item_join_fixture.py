@@ -18,13 +18,15 @@ def original_join():
     coefficients[2]['coefficients']['arpen'] = 3
     static = {'gameVersion': GAME_VERSION, 'itemCount': count, 'prefixCount': prefix_count,
               'itemDomain': domain, 'prefixDomain': list(range(prefix_count)), 'groups': groups,
-              'pools': {name: [2, 1, 3] for name in POOLS}, 'itemSets': sets,
+              'pools': {name: [2, 1, 3] for name in POOLS}, 'itemSets': {**copy.deepcopy(sets), 'Deprecated': [False] * count},
               'priorityDomain': ['SortingPriorityToolsMisc'],
               'priorities': {'SortingPriorityToolsMisc': {'default': -1, 'overrides': [[1, 5], [1, -1], [3, 0]]}},
               'coefficients': coefficients,
               'accessories': [{'prefixId': 3, 'consumerStats': {'moveBonus': 6}}],
               'proofs': {'original': {'preconditions': ['original precondition, not discharged']}},
               'itemSetProof': {'wholeInitializerProven': False},
+              'deprecatedAirSource': {'status': 'original-local-call-path', 'setDefaultsWholeEffectsProven': False,
+                                      'turnToAirFinalEffectsProven': False, 'preconditions': ['original fixture call precondition']},
               'itemDomainProof': {'selectedDomain': domain, 'allSelectableGameItemsProven': False},
               'prefixDomainProof': {'selectedDomain': [1, 2, 3]},
               'sourceBindings': {'materialRegistry': {'fieldToken': 'original-material-field'}, 'itemFields': {key: {'signatureHex': '0602' if key in BOOL_FIELDS else
@@ -54,4 +56,22 @@ def original_join():
         'collectorExecutableSha256': '2' * 64, 'osVersion': 'Original fixture OS', 'clrVersion': 'Original fixture CLR',
         **{gate: False for gate in FALSE_GATES}}
     policy = {'zeroCaption': 'Original no prefix', 'receipt': {'kind': 'original-app-policy-fixture'}}
+    return observation, static, policy
+
+
+def original_join_v2(deprecated_air=False):
+    observation, static, policy = original_join()
+    observation.update(schemaVersion=2, kind='pinned-consumer-data-observation-fragment')
+    if deprecated_air:
+        static['itemSets']['Deprecated'][2] = True
+        observation['records'][1].update(resolvedType=0, name=None, persistentIdPresent=False, persistentId=None)
+        # Air is preserved as diagnostic data, including values unsuitable for
+        # a non-air consumer record. These values are invented fixture data.
+        observation['records'][1]['gameplay']['maxStack'] = 0
+    observation['itemSets']['Deprecated'] = copy.deepcopy(static['itemSets']['Deprecated'])
+    for key, kind in (('materialObservation', 'pinned-material-observation-fragment'),
+                      ('mapObservation', 'pinned-map-observation-fragment')):
+        observation[key] = {'schemaVersion': 1, 'kind': kind, 'status': 'PARTIAL',
+            **{name: copy.deepcopy(observation[name]) for name in ('sourceSha256', 'gameVersion', 'culture', 'context')},
+            **{name: False for name in FALSE_GATES}, 'originalDiagnostic': []}
     return observation, static, policy

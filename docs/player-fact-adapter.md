@@ -159,3 +159,10 @@ Python player-only entry point. It derives actual choice keys from fresh PNGs,
 feeds those keys into fact validation, and binds the repeated choice derivation
 receipt to the final assembly; caller-supplied arbitrary choice domains are not
 accepted by this integrated entry point.
+
+
+Adaptation observation digests are explicitly `canonical-json-utf8-v1`; they are
+not raw file hashes. Independent acceptance binds actual source-file bytes and
+verifies the canonical interpretation. Observations and byte foundation mappings
+are detached before later callback-driven work to keep facts and receipts tied
+to the same snapshot.

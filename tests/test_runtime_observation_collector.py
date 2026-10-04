@@ -15,12 +15,14 @@ class RuntimeObservationCollectorSourceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.profile = json.loads((ROOT / 'fixed-profile.json').read_text())
         cls.program = (ROOT / 'Program.cs').read_text()
-        cls.collector = (ROOT / 'FixedCollector.cs').read_text() + (ROOT / 'PlayerObservation.cs').read_text()
+        cls.collector = (ROOT / 'FixedCollector.cs').read_text() + (ROOT / 'PlayerObservation.cs').read_text() + (ROOT / 'MaterialObservation.cs').read_text() + (ROOT / 'MapObservation.cs').read_text()
 
     def test_fixed_named_fields_cover_consumer_without_derived_defaults(self):
         fields = self.profile['fields']
         self.assertEqual({f['name'] for f in fields if f['key'].startswith('item.')}, set(OBSERVED_FIELDS))
         self.assertEqual(len(OBSERVED_FIELDS), 47)
+        self.assertEqual({f['name'] for f in fields if f['key'].startswith('sets.')},
+                         {'IsFood','IsBasicFish','IsFishingCrate','CanGetPrefixes','IsAMaterial','Deprecated'})
         self.assertEqual({f['name'] for f in fields if f['key'].startswith('groups.')}, set(GROUPS))
         self.assertEqual({f['name'] for f in fields if f['key'].startswith('pools.')}, set(POOLS))
         self.assertEqual(len([f for f in fields if f['key'].startswith('priorities.')]), 20)
@@ -32,6 +34,8 @@ class RuntimeObservationCollectorSourceTests(unittest.TestCase):
             self.assertIn(f'new MethodPin("{pin["key"]}", "{pin["owner"]}", "{pin["name"]}", 0x{pin["token"]:08x}, "{pin["signatureSha256"]}", "{pin["ilSha256"]}")', generated)
         for pin in self.profile['fields'] + self.profile['xnaVectorFields']:
             self.assertIn(f'new FieldPin("{pin["key"]}", "{pin["owner"]}", "{pin["name"]}", 0x{pin["token"]:08x}, "{pin["signatureHex"]}")', generated)
+        pin = self.profile['xnaColorField']
+        self.assertIn(f'XnaColorField = new FieldPin("{pin["key"]}", "{pin["owner"]}", "{pin["name"]}", 0x{pin["token"]:08x}, "{pin["signatureHex"]}")', generated)
         for pins in (self.profile['methods'], self.profile['fields']):
             self.assertEqual(len(pins), len({p['key'] for p in pins}))
             self.assertEqual(len(pins), len({p['token'] for p in pins}))

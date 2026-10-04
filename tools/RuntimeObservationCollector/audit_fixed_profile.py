@@ -46,7 +46,7 @@ def audit(path: Path, xna_core: Path | None = None) -> dict:
         expected_hash = next(d['sha256'] for d in profile['dependencies'] if d['name'] == 'Microsoft.Xna.Framework')
         if sha256(xna_raw) != expected_hash: raise ValueError('XNA_CORE_HASH_MISMATCH')
         xp = _Program(xna_raw, _Budget(ItemTextureAliasLimits(), None))
-        for expected in profile['xnaVectorFields']:
+        for expected in profile['xnaVectorFields'] + [profile['xnaColorField']]:
             rid = expected['token'] & 0xffffff
             owners = [t['fullName'] for t in xp.types.values() if t['firstField'] <= rid < t['lastField']]
             row, _ = xp.row(4, rid)

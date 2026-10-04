@@ -22,6 +22,14 @@ internal static class SelfTest {
         Check(rejected);
     }
     internal static int Run() {
+        MaterialObservationSelfTest.Run();
+        Check(Encoding.UTF8.GetString(PrimitiveJson.Encode(FixedCollector.MapColorBytes(0x04030201U)))=="[1,2,3,4]");
+        Check(Encoding.UTF8.GetString(PrimitiveJson.Encode(FixedCollector.MapColorBytes(0xff000000U)))=="[0,0,0,255]");
+        object[] mapRows=FixedCollector.MapOptionRowsFromArrays(new int[]{0,2},new ushort[]{65535,1},2,3);
+        Check(mapRows.Length==2);
+        Reject(delegate { FixedCollector.MapOptionRowsFromArrays(new int[]{2},new ushort[]{2},1,3); });
+        Reject(delegate { FixedCollector.MapOptionRowsFromArrays(new int[]{-1},new ushort[]{0},1,3); });
+
         Type fixture=typeof(OriginalMetadataFixture);
         FieldInfo field=fixture.GetField("Number",BindingFlags.Public|BindingFlags.Instance);
         MethodInfo method=fixture.GetMethod("OriginalMethod",BindingFlags.Public|BindingFlags.Static);

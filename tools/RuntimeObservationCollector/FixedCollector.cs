@@ -241,10 +241,12 @@ internal sealed partial class FixedCollector : IDisposable {
             "dedServ",Read("main.dedServ"),"netMode",Integer("main.netMode"),"localPlayerIndex",Integer("main.myPlayer"));
         object playerObservation=CapturePlayerObservation(rows);
         object[] prefixNames=CapturePrefixNames(prefixCount);
+        object materialObservation=CaptureMaterialObservation(samples,count,culture,context);
+        object mapObservation=CaptureMapObservation(culture,context);
         foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies()) CheckAssembly(assembly);
-        return PrimitiveJson.Object("schemaVersion",1,"kind","pinned-item-player-data-observation-fragment","status","PARTIAL",
+        return PrimitiveJson.Object("schemaVersion",2,"kind","pinned-consumer-data-observation-fragment","status","PARTIAL",
             "gameVersion","1.4.5.8","culture",culture,"context",context,"sourceSha256",FixedProfile.GameSha256,"itemCount",count,"prefixCount",prefixCount,
-            "playerObservation",playerObservation,"prefixNames",prefixNames,"records",rows,"groups",groups,"itemSets",sets,"priorities",priorities,"pools",pools,
+            "playerObservation",playerObservation,"materialObservation",materialObservation,"mapObservation",mapObservation,"prefixNames",prefixNames,"records",rows,"groups",groups,"itemSets",sets,"priorities",priorities,"pools",pools,
             "initializersReturned",stages.ToArray(),"worldFlags",world,"managedAssemblyHashes",loaded,
             "nativeModuleHashes",NativeReceipt(),"randomSeed",0,"collectorExecutableSha256",Program.HashFile(typeof(FixedCollector).Assembly.Location),
             "osVersion",Environment.OSVersion.VersionString,"clrVersion",Environment.Version.ToString(),

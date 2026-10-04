@@ -44,8 +44,8 @@ from the old generator's numeric prefix ranges.
 
 ## Selection and source joins
 
-The selected Item domain is the sorted set of positive named `ItemID` Constant
-values, excluding any `Count` field. Every Constant row retains its name,
+The independent **raw named domain** is the sorted set of positive named
+`ItemID` Constant values, excluding any `Count` field. Every Constant row retains its name,
 metadata token, Constant token, and blob-offset evidence; same-value aliases and
 excluded nonpositive rows remain in the receipt. Nonliteral fields are disclosed.
 Independent source Count is an upper-exclusive registry bound only.
@@ -55,13 +55,42 @@ fields, all below Item Count 6,196. Their equality with `1..<Count` is a checked
 property of these source rows, never the definition of selectable completeness.
 This is a named-constant selection policy, not a proof of all selectable items.
 
-The observation must provide exactly one record per selected ID. Missing,
-duplicate, foreign, remapped (`resolvedType != requestedId`), variant, or extra
-rows fail. No item row is silently dropped. Every name and persistent ID must be
-observed and nonempty; `persistentIdPresent` must be true. Gameplay must contain
-exactly the 47 observed fields. Their source primitive types and ranges are
-checked, including exact float32 values; the existing adapter derives the four
-application classification fields.
+The observation must provide exactly one raw record per **named** ID, including
+every deprecated item. Missing, duplicate, foreign, variant, or extra rows fail.
+No raw item row is silently dropped. Every row retains all 47 typed gameplay
+fields, identity/presence diagnostics, and research presence/out-count.
+
+Selection is explicitly versioned:
+
+- Schema 1 uses `positive-named-identity-preserving-v1`: all five original
+  `itemSets` are required, every `resolvedType` must equal `requestedId`, and no
+  Deprecated-based filtering is performed. A schema-1 air row still fails.
+- Schema 2 uses `positive-named-minus-source-and-observed-deprecated-air-v2`:
+  all six `itemSets`, including full `Deprecated`, are required. The latter must
+  exactly match a fresh conditional source bool-set recipe. Every source+observed
+  Deprecated ID must have an actual observed `resolvedType == 0`; a still-positive
+  deprecated item fails. Only these triple-bound rows are excluded from consumer
+  output. All other rows must preserve identity, so unexplained air and arbitrary
+  remaps fail.
+
+On the pinned PE, fresh extraction finds 28 Deprecated IDs and verifies that all
+28 belong to the independent positive named domain. A successful schema-2 join
+therefore accounts for 6,195 raw rows, retains all 28 excluded raw records, and
+selects 6,167 non-air consumer rows. Count alone establishes neither domain.
+
+`itemSelection` records the explicit policy, collector schema version, full raw
+named domain, selected/excluded domains, row counts, full excluded raw records,
+and per-excluded-record hashes. Research absence for excluded items remains in
+the research receipt as well as in the full raw rows. Excluded null/empty names
+and missing/null persistent IDs stay unchanged as diagnostics. No replacement
+name, persistent ID, or gameplay value is invented. All primitive field checks
+still apply to excluded records; consumer-only non-air constraints, such as
+positive maxStack or nonempty names, apply only to selected records.
+
+Every selected name and persistent ID must be observed and nonempty, with
+`persistentIdPresent == true`. Exact source primitive ranges, including float32
+values, are checked; the existing adapter derives four application classification
+fields and projects registries onto the explicit selected domain.
 
 All observed registries include their full source Count domain, including ID 0:
 
@@ -77,6 +106,9 @@ All observed registries include their full source Count domain, including ID 0:
   Its mutable registry values are not asserted equal to final `Item.material`;
   the latter remains the independently observed per-item gameplay field. Only
   the four application classification sets are projected into the adapter.
+- Schema 2 additionally requires `ItemID.Sets.Deprecated` and compares every
+  element, including ID 0, with the fresh source recipe. Schema 1 rejects that
+  extra array rather than silently changing its identity-preserving policy.
 - All 20 sorting priority arrays are compared with fresh explicit source default
   and ordered-override provenance. Repeated writes use last-write semantics;
   explicit `-1` and `0` remain sparse membership, rather than disappearing when
@@ -87,6 +119,26 @@ All observed registries include their full source Count domain, including ID 0:
 Count, named prefix constants, prefix names, and coefficient records agree on
 98 prefixes. Positive prefix names must come from complete collector
 `prefixNames: [{id, name}]` observations of `Lang.prefix`/`LocalizedText.Value`.
+
+## Deprecated call-path evidence is not whole-call acceptance
+
+The fixed source binds `Item.SetDefaults` token `0x06000797` and its guarded tail:
+IL 1894–1936 checks `0 < this.type < ItemID.Count`, reads `Deprecated[this.type]`
+at IL 1916, and calls `TurnToAir` at IL 1931 on a true entry. The exact whole
+`TurnToAir` token `0x060007b8` dispatch shape tests type/stack and calls
+`SetDefaults(0, null)` when either is nonzero. Field identity, source method/IL
+hashes, local/EH absence, shape, branch targets, and relevant stack bounds are
+checked internally.
+
+This is a **local conditional call-path fact**, not a summary of the preceding
+SetDefaults body or the recursive SetDefaults call. The receipt retains empty
+entry-stack, valid receiver/array/range, normal entry, and no-concurrent-mutation
+preconditions. `setDefaultsWholeEffectsProven`, `turnToAirFinalEffectsProven`,
+`normalReturnGuaranteed`, and `runtimeInitializationVerified` remain false.
+The source branch does not substitute for an actual observed final type zero.
+The schema-2 consistency policy requires that observed zero independently and
+rejects a contradictory positive Deprecated row; successful validation still
+does not authenticate or accept initialization.
 
 ## Prefix and research representation
 
@@ -151,6 +203,11 @@ source and app pin rejection, domain holes and aliases, no-drop row checks,
 source array mismatches at ID 0 and positive IDs, explicit priority sentinels,
 prefix scales, null/empty/observed zero names, research absence, primitive ranges,
 context/false gates, missing source coefficients, malformed values and budgets.
+Schema-2 fixtures also cover retained deprecated-air exclusions, missing raw
+rows, unexpected remaps/air, positive Deprecated contradictions, source-array
+disagreement, and unchanged schema-1 behavior. Original symbolic IL fixtures
+exercise the conditional call-path shape and reject altered fields, branches,
+callees, arguments, stack bounds, and exception regions.
 
 Run:
 
@@ -162,3 +219,22 @@ An optional private test inspects the pinned PE and pinned application sources
 as data only. Set `TERRARIA_OBSERVED_ITEM_PE` and `TERRARIA_CONSUMER_ROOT` to enable
 it. It verifies the source counts and policy pins; it does not manufacture a
 runtime observation or claim an authentic end-to-end collector run.
+
+
+## Diagnostic root version2
+
+The Item join also recognizes the exact version2
+`pinned-consumer-data-observation-fragment` root. It adds
+`materialObservation` and `mapObservation`, plus the versioned sixth Item registry
+`itemSets.Deprecated` and selection policy described above. The additional
+fragments’ source/version/culture/context
+must match and all five trust gates must remain false. The Item result retains
+those fragments through the exact root observation hash. It does not emit
+material/map roles or accept their semantics. Original version1 remains explicit
+and cannot carry these extra fields under a misleading version number.
+
+
+Observation digests in adaptation receipts use canonical JSON UTF-8, not the
+original collector file's lexical JSON bytes. Independent runtime acceptance
+must pin the original file bytes separately and verify this canonical derivation.
+Callbacks cannot change the detached observation after that digest is computed.

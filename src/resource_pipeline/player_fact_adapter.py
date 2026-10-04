@@ -7,6 +7,7 @@ The optional, unused dye image is explicitly omitted in dedicated-server mode.
 from __future__ import annotations
 
 import copy
+import json
 import math
 import re
 
@@ -43,9 +44,21 @@ def _bool_array(values, count, label):
     return [n for n, value in enumerate(values) if value]
 
 
+def _snapshot_mappings(item_objects, choices):
+    _need(type(item_objects) is dict and len(item_objects) == len(ITEM_ROLES)
+          and _exact(item_objects, ITEM_ROLES)
+          and all(type(raw) is bytes and 0 < len(raw) <= 32 * 1024 * 1024 for raw in item_objects.values())
+          and sum(map(len, item_objects.values())) <= 64 * 1024 * 1024,
+          'three bounded immutable Item foundation roles required')
+    _need(type(choices) is dict and 0 < len(choices) <= 8192, 'bounded plain choice mapping required')
+    return dict(item_objects), dict(choices)
+
+
 def _join_player_facts(observation, static, app_policy, item_objects, choices, checkpoint=lambda: None):
     """Internal join, separately fixture-tested; public API derives static/policy."""
+    item_objects, choices = _snapshot_mappings(item_objects, choices)
     _bounded_policy(observation, checkpoint)
+    observation = json.loads(canonical_json(observation))
     _need(_exact(observation, OBSERVATION_FIELDS) and type(observation['schemaVersion']) is int
           and observation['schemaVersion'] == 1, 'unexpected observation schema')
     _need(observation['sourceSha256'] == SOURCE_SHA256 and observation['culture'] == 'zh-Hans'
@@ -153,11 +166,15 @@ def adapt_observed_player_facts(observation, *, pe_bytes, app_sources, item_obje
     bind those inputs but cannot authenticate the caller's freshness assertion.
     """
     checkpoint()
+    _bounded_policy(observation, checkpoint)
+    observation = json.loads(canonical_json(observation))
+    item_objects, choices = _snapshot_mappings(item_objects, choices)
     static, source_receipt = extract_player_static_facts(pe_bytes, checkpoint)
     app_policy, policy_receipt = extract_player_app_policy(app_sources)
     facts, evidence = _join_player_facts(observation, static, app_policy, item_objects, choices, checkpoint)
     receipt = {'schemaVersion': 1, 'status': 'PLAYER_FACTS_ADAPTED',
                'sourceSha256': SOURCE_SHA256, 'observationSha256': sha256(canonical_json(observation)),
+               'observationDigestEncoding': 'canonical-json-utf8-v1',
                'factsSha256': sha256(canonical_json(facts)), 'staticSource': source_receipt,
                'applicationPolicy': policy_receipt, **evidence,
                'omittedFields': [{'field': 'dyes.image', 'reason': 'dedServ UseImage does not retain asset; current CPU consumer does not read image'}],
