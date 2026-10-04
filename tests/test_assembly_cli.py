@@ -10,6 +10,9 @@ from resource_pipeline.security import canonical_json, sha256
 from test_item_assembler import original_inputs
 from test_marker_assembler import original_marker_inputs
 from test_pixel_assembler import fixture as pixel_fixture, policy as pixel_policy
+from test_materials_assembler import original_material_inputs
+from test_player_assembler import original_player_inputs
+from test_worldgen_assembler import original_worldgen_inputs
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/assemble_consumer_draft.py'
 
@@ -70,6 +73,43 @@ class AssemblyCliTests(unittest.TestCase):
             self.assertEqual(set(manifest['files']), {'pixel.catalog', 'pixel.rgb'})
             self.assertFalse(manifest['consumerReleaseReady'])
             self.assertEqual((output / 'pixel.rgb.bin').read_bytes()[:4], b'SRGB')
+
+    def test_materials_cli_writes_only_partial_atomic_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); inputs = original_material_inputs()
+            (root / 'material-records.json').write_bytes(canonical_json(inputs['records']))
+            (root / 'policy.json').write_bytes(canonical_json(inputs['policy']))
+            response = self.call('materials', root, root / 'draft')
+            self.assertEqual(response.returncode, 0, response.stderr)
+            manifest = json.loads((root / 'draft/assembly.json').read_bytes())
+            self.assertEqual(set(manifest['releaseRoles']), {'materials.base', 'materials.rules'})
+            self.assertFalse(manifest['consumerReleaseReady'])
+
+    def test_player_cli_binds_items_and_renders_png(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); inputs = original_player_inputs()
+            (root / 'policy.json').write_bytes(canonical_json(inputs['policy']))
+            for role, raw in inputs['item_objects'].items(): (root / (role + '.json')).write_bytes(raw)
+            (root / 'textures').mkdir()
+            for name, raw in inputs['textures'].items(): (root / 'textures' / name).write_bytes(raw)
+            response = self.call('player', root, root / 'draft')
+            self.assertEqual(response.returncode, 0, response.stderr)
+            manifest = json.loads((root / 'draft/assembly.json').read_bytes())
+            self.assertEqual(set(manifest['releaseRoles']), {'player.presentation', 'player.walk', 'player.atlas'})
+            self.assertEqual((root / 'draft/player.atlas.png').read_bytes()[:8], b'\x89PNG\r\n\x1a\n')
+
+    def test_worldgen_service_options_never_invent_a_release_role(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); inputs, foundations = original_worldgen_inputs()
+            (root / 'worldgen-input.json').write_bytes(canonical_json(inputs))
+            (root / 'foundations.json').write_bytes(canonical_json({k: {f: v for f, v in row.items() if f != 'bytes'} for k, row in foundations.items()}))
+            (root / 'items.catalog.json').write_bytes(foundations['items']['bytes'])
+            (root / 'materials.base.json').write_bytes(foundations['materials']['bytes'])
+            response = self.call('worldgen', root, root / 'draft')
+            self.assertEqual(response.returncode, 0, response.stderr)
+            manifest = json.loads((root / 'draft/assembly.json').read_bytes())
+            self.assertEqual(manifest['releaseRoles'], ['worldgen.choices'])
+            self.assertEqual(manifest['serviceArtifacts'], ['worldgen.options'])
 
     def test_missing_final_fact_and_linked_root_do_not_emit_output(self):
         with tempfile.TemporaryDirectory() as tmp:

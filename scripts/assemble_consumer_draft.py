@@ -7,6 +7,7 @@ import argparse
 from pathlib import Path
 
 from resource_pipeline.contracts import package_file
+from resource_pipeline.consumer_release import GROUPS
 from resource_pipeline.item_assembler import assemble_item_resources
 from resource_pipeline.marker_assembler import assemble_marker_resources
 from resource_pipeline.security import PipelineError, atomic_write, canonical_json, read_json, sha256
@@ -28,6 +29,53 @@ def assemble(group, root, base_sha256=None):
     safe_root(root)
     if group == 'items':
         return assemble_item_resources(read_json(package_file(root, 'item-facts.json'), 32 * 1024 * 1024))
+    if group == 'materials':
+        from resource_pipeline.materials_assembler import assemble_material_resources
+        return assemble_material_resources(records=read_json(package_file(root, 'material-records.json'), 16 * 1024 * 1024),
+                                           policy=read_json(package_file(root, 'policy.json'), 16 * 1024 * 1024))
+    if group == 'worldgen':
+        from resource_pipeline.worldgen_assembler import assemble_worldgen_resources
+        inputs = read_json(package_file(root, 'worldgen-input.json'), 16 * 1024 * 1024)
+        metadata = read_json(package_file(root, 'foundations.json'), 16384)
+        if type(metadata) is not dict or set(metadata) != {'items', 'materials'}:
+            raise PipelineError('Exact worldgen foundations are required')
+        foundations = {}
+        for kind, filename in (('items', 'items.catalog.json'), ('materials', 'materials.base.json')):
+            value = metadata[kind]
+            if type(value) is not dict or set(value) != {'gameVersion', 'releaseId', 'baseSha256'}:
+                raise PipelineError('Invalid worldgen foundation metadata')
+            foundations[kind] = {**value, 'bytes': read_bytes(root, filename, 16 * 1024 * 1024)}
+        return assemble_worldgen_resources(inputs, foundations=foundations)
+    if group == 'player':
+        from resource_pipeline.player_assembler import assemble_player_resources, ITEM_ROLES
+        policy = read_json(package_file(root, 'policy.json'), 16 * 1024 * 1024)
+        if type(policy) is not dict or type(policy.get('walk')) is not list or not 0 < len(policy['walk']) <= 8192:
+            raise PipelineError('Bounded player walk policy required')
+        repairs, choices = policy.get('repairs'), policy.get('choices')
+        if (type(repairs) is not dict or type(repairs.get('textures')) is not list or len(repairs['textures']) > 8192
+                or type(choices) is not dict or type(choices.get('rows')) is not list or not 0 < len(choices['rows']) <= 2048):
+            raise PipelineError('Bounded player repair/choice policy required')
+        layers = []
+        for recipe in policy['walk'] + repairs['textures']:
+            if type(recipe) is not dict or type(recipe.get('frames')) is not list or len(recipe['frames']) != 14:
+                raise PipelineError('Player recipes require 14 explicit frames')
+            layers.extend(recipe['frames'])
+        for row in choices['rows']:
+            if type(row) is not dict: raise PipelineError('Invalid player choice recipe')
+            layers.append(row.get('layers'))
+        names = set()
+        for frame in layers:
+            if type(frame) is not list or len(frame) > 64: raise PipelineError('Player layer limit exceeded')
+            for layer in frame:
+                if type(layer) is not dict or not isinstance(layer.get('texture'), str): raise PipelineError('Invalid player texture reference')
+                names.add(layer['texture'])
+        if not 0 < len(names) <= 8192: raise PipelineError('Player source texture set bound exceeded')
+        paths = [(name, package_file(root, 'textures/' + name)) for name in names]
+        if (any(not 0 < p.stat().st_size <= 32 * 1024 * 1024 for _, p in paths)
+                or sum(p.stat().st_size for _, p in paths) > 128 * 1024 * 1024):
+            raise PipelineError('Player input texture byte bound exceeded')
+        return assemble_player_resources(policy=policy, textures={name: p.read_bytes() for name, p in paths},
+                                         item_objects={role: read_bytes(root, role + '.json', 32 * 1024 * 1024) for role in ITEM_ROLES})
     base = read_bytes(root, 'materials.base.json', 32 * 1024 * 1024)
     if not base_sha256 or sha256(base) != base_sha256:
         raise PipelineError('An independent exact --base-sha256 is required')
@@ -65,7 +113,7 @@ def assemble(group, root, base_sha256=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--group', required=True, choices=('items', 'markers', 'pixel'))
+    parser.add_argument('--group', required=True, choices=('items', 'materials', 'markers', 'pixel', 'player', 'worldgen'))
     parser.add_argument('--input-root', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--base-sha256')
@@ -80,13 +128,16 @@ def main():
     output.mkdir(parents=True, mode=0o700)
     files = {}
     for role, raw in objects.items():
-        suffix = '.bin' if role in ('markers.images', 'pixel.rgb') else '.json'
+        suffix = '.bin' if role in ('markers.images', 'pixel.rgb', 'player.walk') else '.png' if role == 'player.atlas' else '.json'
         name = role + suffix
         atomic_write(output / name, raw)
         files[role] = {'file': name, 'bytes': len(raw), 'sha256': sha256(raw)}
     # Final file is the completion marker, not a release manifest or certificate.
+    known_roles = {role for formats, _ in GROUPS.values() for role in formats}
+    release_roles, service_artifacts = sorted(set(objects) & known_roles), sorted(set(objects) - known_roles)
     atomic_write(output / 'assembly.json', canonical_json({'kind': 'private-derived-draft',
         'group': args.group, 'files': files, 'receipt': receipt, 'sourceProductionComplete': False,
+        'releaseRoles': release_roles, 'serviceArtifacts': service_artifacts,
         'consumerReleaseReady': False, 'publicationApproved': False}))
     print(canonical_json({'kind': 'private-derived-draft', 'group': args.group, 'objects': len(objects),
                           'rawBytes': sum(map(len, objects.values())), 'sourceProductionComplete': False,

@@ -2,13 +2,16 @@
 
 ## 当前结论
 
-本次新增真正执行转换的三个组装器，覆盖 7 个角色的**派生实现**：
+现有六个有限组装器覆盖全部 13 个角色的**派生实现**，另产出一份明确分离的 worldgen 服务配置草稿：
 
 | 输入 | 派生输出 | 已实现的转换 |
 |---|---|---|
 | 独立正 ID 域、完整最终物品事实、前缀/分类注册表 | `items.catalog`、`items.rules`、`items.categories` | 七列 join、完整规则列、分类位图、排序 key 去重、弹药策略 |
 | 材料基础 JSON、版本化白名单策略 | `pixel.catalog`、`pixel.rgb` | float32 调色、候选指纹、精确完整 256³ 最近色索引 |
 | 原始 PNG、源文件字节、显式选择器/裁切策略、材料基础 JSON | `markers.catalog`、`markers.images` | 新 PNG 裁切、去除帧间隔、gapless 拼包、跨组原始字节 hash 绑定 |
+| 完整材料命名记录、布局/shape/variant 政策 | `materials.base`、`materials.rules` | 连续 tile 域、规则 tuple、frameImportant 与消费 fallback 约束 |
+| 原始 PNG、显式 14 帧图层配方、人物事实与三对象 item 基础层 | `player.presentation`、`player.walk`、`player.atlas` | 帧合成/共同裁切、去重、palette/zlib、图集、修复和跨组绑定 |
+| 服务 schema/defaults、独立权威目录、应用选项政策、基础对象 | `worldgen.choices` | FieldSpec/默认值验证、目录投影与 foundation 绑定；`worldgen.options` 仅为服务草稿，不是第 14 个 release role |
 
 这不是“13 角色已经从上传源成功提取”。本次真实源最终消费验收仍为 **0 个完整组**。现有 `build_consumer_release.py` 仍是传输打包器，不是 source→consumer assembler。新组装器不接受迁移后的 role 对象来冒充源输入，也不复制旧私有基线表。
 
@@ -18,7 +21,7 @@
 
 组装函数验证结构、域关联、输入身份和确定性转换。匹配 hash 只证明字节一致，不能证明调用方所写的游戏事实真实。`sourceHashes` 也只是保留 lineage，未经过本模块认证。
 
-- items/markers 回执固定 `status=DERIVED_ONLY`、`sourceSemanticsVerified=false`、`publicationApproved=false`。
+- items/materials/markers/player/worldgen 回执固定 `status=DERIVED_ONLY`、`sourceSemanticsVerified=false`、`publicationApproved=false`。
 - pixel 回执固定 `sourceCompletenessEstablished=false`，含精确基础/策略/输出 hash，不签发 producer 证明。
 - CLI 最后写 `assembly.json`；固定 `sourceProductionComplete=false`、`consumerReleaseReady=false`、`publicationApproved=false`，不是 release manifest。
 - 回执不可代替后端 schema-2 producer/domain/policy 证书，不自动开放真实上传、发布、频道推进或回滚。
@@ -54,6 +57,9 @@ python -m pip install -e '.[test]'
 PYTHONPATH=src python scripts/assemble_consumer_draft.py --group items --input-root /PRIVATE/item-input --output /PRIVATE/item-draft
 PYTHONPATH=src python scripts/assemble_consumer_draft.py --group markers --input-root /PRIVATE/marker-input --base-sha256 EXACT_BASE_SHA256 --output /PRIVATE/marker-draft
 PYTHONPATH=src python scripts/assemble_consumer_draft.py --group pixel --input-root /PRIVATE/pixel-input --base-sha256 EXACT_BASE_SHA256 --output /PRIVATE/pixel-draft
+PYTHONPATH=src python scripts/assemble_consumer_draft.py --group materials --input-root /PRIVATE/material-input --output /PRIVATE/material-draft
+PYTHONPATH=src python scripts/assemble_consumer_draft.py --group player --input-root /PRIVATE/player-input --output /PRIVATE/player-draft
+PYTHONPATH=src python scripts/assemble_consumer_draft.py --group worldgen --input-root /PRIVATE/worldgen-input --output /PRIVATE/worldgen-draft
 ```
 
 输入布局：
@@ -61,6 +67,9 @@ PYTHONPATH=src python scripts/assemble_consumer_draft.py --group pixel --input-r
 - items：`item-facts.json`，符合上述完整模型。
 - markers：`materials.base.json`、`policy.json`、`textures/Tiles_ID.png`、`sources/` 下 policy 声明的源文件。
 - pixel：`materials.base.json`、`policy.json`，策略格式见 [PIXEL-ASSEMBLER.zh-CN.md](PIXEL-ASSEMBLER.zh-CN.md)。
+- materials：`material-records.json`、`policy.json`，命名结构见 [materials-assembly.md](materials-assembly.md)。
+- player：`policy.json`、item 三角色 `.json`、`textures/` 中被配方精确引用的 PNG，见 [PLAYER-ASSEMBLER.zh-CN.md](PLAYER-ASSEMBLER.zh-CN.md)。
+- worldgen：`worldgen-input.json`、`foundations.json`（items/materials 的 gameVersion/releaseId/baseSha256）、`items.catalog.json`、`materials.base.json`，见 [worldgen-assembly.md](worldgen-assembly.md)。服务草稿写入 `serviceArtifacts`，不伪装成消费发布角色。
 
 输出目录必须是新的、不能经过 symlink、必须在 pipeline checkout 外。所有成功计算完成后才创建输出；`assembly.json` 是最终完成标记。仅输出统计到 stdout。输入/输出保持私有，不提交原始游戏字节，也不把它们上传公共 Actions artifact。
 
@@ -69,11 +78,11 @@ PYTHONPATH=src python scripts/assemble_consumer_draft.py --group pixel --input-r
 ## 精确剩余开发缺口
 
 1. **items 三角色**：完整 Item.SetDefaults 最终字段 producer；独立选择域、有效本地化、persistent/research join；前缀效果/池/组/排除和 SortingPriority 注册表的最终源证据。当前静态前缀写入/局部 baseline 不能顶替完整初始化值。
-2. **materials.base/materials.rules**：tile/wall/paint 的最终名称/地图颜色；frameImportant、TileObjectData 布局、variant/shape 的完整 producer 与组装器。paint 输入 RGB 不等于最终地图颜色。
+2. **materials.base/materials.rules**：派生组装器已实现；仍缺 tile/wall/paint 的最终名称/地图颜色、frameImportant、TileObjectData 布局完整 producer，以及独立审核的 variant/shape 应用政策。paint 输入 RGB 不等于最终地图颜色。
 3. **pixel 两角色**：本次派生算法完成；仍依赖上一项真实材料输入和经过审核的应用白名单。不能凭真实 PNG 猜地图颜色。
 4. **markers 两角色**：本次 PNG/拼包算法完成；还缺当前版本选择器与裁切政策的来源推导、独立完整材料域。旧迁移 catalog 不是本次提取证据。
-5. **player 三角色**：equipment/frame/层顺序与局部修复政策、walk 压缩/图集组装、buff/dye/hair/wing/selection/versionLabels 的 producer/应用政策仍未实现闭环。
-6. **worldgen.choices**：当前服务端配置 schema/revision/目录/FieldSpec/labels/允许 pass 的权威来源与组装器。不能通过执行真实世界生成弥补未知 UI schema。
+5. **player 三角色**：walk/图集/修复及完整 presentation 组装已实现；仍缺 equipment/frame/层顺序与局部修复政策、buff/dye/hair/wing/selection/versionLabels 的 producer/审核闭环。显式配方不是自动获得真实映射的功能。
+6. **worldgen.choices**：有限 schema/选项组装已实现；仍缺当前服务端配置 schema/revision/目录/FieldSpec/labels/允许 pass 的权威来源接入与固定。不能通过执行真实世界生成弥补未知 UI schema。
 7. **发布前**：上述全域 source 证明、后端独立 schema-2 验证、跨组绑定与原子 release-set 都通过后，才进入真实服务鉴权/CDN/读回与用户设备渲染验收。
 
 ## 验证命令
