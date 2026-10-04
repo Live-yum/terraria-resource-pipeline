@@ -1,0 +1,8 @@
+The Go integer distance transform and SRGB encoding follow the repository's
+viewer-app/scripts/stable-rgb-transform.cpp and generate-stable-rgb.mjs.
+The TXCI v3 encoding follows TerraWasm/scripts/terrax_color_index_v3_builder.py
+and its reader contract in TerraWasm/include/terra_txci.h.
+
+This package contains no third-party Go code or dependencies. The existing
+viewer-app and TerraWasm source files are project-owned references; no license
+grant is inferred from their absence of a license header.

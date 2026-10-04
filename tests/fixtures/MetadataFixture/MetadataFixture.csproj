@@ -1,1 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><AssemblyVersion>0.0.1.0</AssemblyVersion><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><EmbeddedResource Include="zh-Hans.json" LogicalName="Terraria.Localization.Content.zh-Hans.Items.json" /></ItemGroup></Project>

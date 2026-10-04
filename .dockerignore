@@ -1,0 +1,13 @@
+**
+!go.mod
+!Dockerfile
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!tools/
+!tools/RuntimeExtractor/
+!tools/RuntimeExtractor/*.cs
+!.runtime/
+!.runtime/container/
+!.runtime/container/trp
