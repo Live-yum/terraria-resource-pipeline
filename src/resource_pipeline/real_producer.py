@@ -16,6 +16,7 @@ from .locale_mapping import extract_locale_mapping
 from . import research_semantics
 from . import accessory_prefix_semantics
 from . import prefix_pool_semantics, prefix_coefficient_semantics
+from . import id_count_semantics, prefix_group_semantics
 
 FAMILIES = {
     'items': r'Item_(\d+)', 'tiles': r'Tiles_(\d+)', 'walls': r'Wall_(\d+)',
@@ -109,7 +110,7 @@ def _accessory_prefix_evidence(path: Path, source_row: dict, output: Path, role:
 
 
 def _prefix_source_evidence(path: Path, source_row: dict, output: Path, role: str, index: int, kind: str, checkpoint):
-    """Version-selected pool/coefficient models; no private rows enter receipts."""
+    """Version-selected finite models; no private rows enter receipts."""
     checkpoint(); digest = source_row['sha256']
     if kind == 'pools':
         profiles, extract = prefix_pool_semantics._PROFILES, prefix_pool_semantics.extract_prefix_pool_semantics
@@ -117,6 +118,12 @@ def _prefix_source_evidence(path: Path, source_row: dict, output: Path, role: st
     elif kind == 'coefficients':
         profiles, extract = prefix_coefficient_semantics.PROFILES, prefix_coefficient_semantics.extract_prefix_coefficient_semantics
         flag, family = 'coefficientModelComplete', 'prefix-coefficients'
+    elif kind == 'counts':
+        profiles, extract = id_count_semantics._PROFILES, id_count_semantics.extract_id_count_semantics
+        flag, family = 'wholeInitializerProven', 'id-counts'
+    elif kind == 'groups':
+        profiles, extract = prefix_group_semantics._PROFILES, prefix_group_semantics.extract_prefix_group_semantics
+        flag, family = 'wholeInitializerProven', 'prefix-groups'
     else: raise PipelineError('Unknown installed prefix evidence stage')
     if digest in profiles:
         model = extract(path, checkpoint=checkpoint)
@@ -132,11 +139,23 @@ def _prefix_source_evidence(path: Path, source_row: dict, output: Path, role: st
         summary.update(factScope='INITIALIZER_BOUNDARY', poolCount=len(model.get('pools', {})),
                        entryCount=sum(len(v) for v in model.get('pools', {}).values()),
                        independentDomainInitializerProven=model.get('independentDomainInitializerProven') is True)
-    else:
+    elif kind == 'coefficients':
         summary.update(factScope='METHOD_OUT_TRANSFORM', prefixCount=len(model.get('records', [])),
                        eligibilityProven=False, priceScoreProven=False)
+    elif kind == 'counts':
+        summary.update(factScope='INITIALIZER_BOUNDARY', conditional=True, normalReturnGuaranteed=False,
+                       runtimeDependencyBindingVerified=False,
+                       domainCounts={name: model['domains'][name]['count'] for name in ('ItemID', 'TileID', 'WallID')
+                                     if name in model.get('domains', {})})
+    else:
+        summary.update(factScope='INITIALIZER_BOUNDARY', conditional=True, normalReturnGuaranteed=False,
+                       runtimeDependencyBindingVerified=False,
+                       groupCount=len(model.get('groups', {})),
+                       entryCount=sum(len(v) for v in model.get('groups', {}).values()),
+                       eligibilityProven=False,
+                       independentDomainInitializerProven=model.get('independentDomainInitializerProven') is True)
     encoded = bounded_evidence_json(model, 4 * 1024 * 1024, checkpoint)
-    name = f'{role}-{index}-prefix-{kind}.json'
+    name = f'{role}-{index}-id-counts.json' if kind == 'counts' else f'{role}-{index}-prefix-{kind}.json'
     checkpoint(); atomic_write(output / name, encoded)
     return {'sourceRole': role, 'sourceSha256': digest, 'path': name, 'sha256': sha256(encoded), 'summary': summary}
 
@@ -227,7 +246,7 @@ class RawEvidenceProducer:
         if len(executables) > 4:
             raise PipelineError('Ambiguous server executable inventory')
         assemblies, rejected, mappings, research, accessory_prefix = [], [], [], [], []
-        prefix_pools, prefix_coefficients = [], []
+        prefix_pools, prefix_coefficients, id_counts, prefix_groups = [], [], [], []
         for index, source_row in enumerate(executables):
             checkpoint()
             # Inventory reuse cannot bypass link checks on paths actually read.
@@ -239,6 +258,8 @@ class RawEvidenceProducer:
             accessory_prefix.append(_accessory_prefix_evidence(path, source_row, output, 'server', index, checkpoint))
             prefix_pools.append(_prefix_source_evidence(path, source_row, output, 'server', index, 'pools', checkpoint))
             prefix_coefficients.append(_prefix_source_evidence(path, source_row, output, 'server', index, 'coefficients', checkpoint))
+            id_counts.append(_prefix_source_evidence(path, source_row, output, 'server', index, 'counts', checkpoint))
+            prefix_groups.append(_prefix_source_evidence(path, source_row, output, 'server', index, 'groups', checkpoint))
             try:
                 options={'checkpoint':checkpoint}
                 if self._builtin_inspector:options['requested_locales']=('en-US','zh-Hans')
@@ -275,6 +296,8 @@ class RawEvidenceProducer:
             accessory_prefix.append(_accessory_prefix_evidence(path, source_row, output, 'client', index, checkpoint))
             prefix_pools.append(_prefix_source_evidence(path, source_row, output, 'client', index, 'pools', checkpoint))
             prefix_coefficients.append(_prefix_source_evidence(path, source_row, output, 'client', index, 'coefficients', checkpoint))
+            id_counts.append(_prefix_source_evidence(path, source_row, output, 'client', index, 'counts', checkpoint))
+            prefix_groups.append(_prefix_source_evidence(path, source_row, output, 'client', index, 'groups', checkpoint))
             try:
                 evidence = extract_client_metadata(path, checkpoint=checkpoint)
             except PipelineError:
@@ -360,7 +383,15 @@ class RawEvidenceProducer:
              'modelComplete': item['summary']['modelComplete'], 'factScope': item['summary']['factScope'],
              'sourceRole': item['sourceRole'], 'sourceSha256': item['sourceSha256'],
              'evidencePath': item['path'], 'evidenceSha256': item['sha256']}
-            for item in [*prefix_pools, *prefix_coefficients]]
+            for item in [*prefix_pools, *prefix_coefficients, *prefix_groups]]
+        for family, domain in (('items', 'ItemID'), ('tiles', 'TileID'), ('walls', 'WallID')):
+            coverage[family]['idDomainSubcapabilities'] = [
+                {'capability': 'independentCountInitializer', 'status': item['summary']['status'],
+                 'complete': False, 'conditional': True, 'factScope': 'INITIALIZER_BOUNDARY',
+                 'domain': domain, 'count': item['summary']['domainCounts'].get(domain),
+                 'sourceRole': item['sourceRole'], 'sourceSha256': item['sourceSha256'],
+                 'evidencePath': item['path'], 'evidenceSha256': item['sha256']}
+                for item in id_counts]
         manifest = {'schemaVersion': 1, 'adapterId': self.adapter_id,
             'status': 'PARTIAL', 'executedInput': False, 'extractionComplete': False,
             'publishable': False, 'inputBinding': bindings,
@@ -373,6 +404,8 @@ class RawEvidenceProducer:
             'accessoryPrefixEvidence': accessory_prefix,
             'prefixPoolEvidence': prefix_pools,
             'prefixCoefficientEvidence': prefix_coefficients,
+            'idCountEvidence': id_counts,
+            'prefixGroupEvidence': prefix_groups,
             'unclassifiedDecodedImages': unclassified,
             'versionEvidence': [item['evidence'].get('gameVersionEvidence') for item in assemblies],
             'clientVersionEvidence': [item['evidence']['gameVersionEvidence'] for item in clients],
