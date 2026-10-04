@@ -96,3 +96,11 @@
 - 用未知字段/动态路径/不可解析 IL 夹具验证失败关闭；给正确 decoder 测试 switch、双字节 opcode 和各种 operand，避免读取错位漏依赖。
 - 同输入两次集合与对象 hash 一致；重建后报告公共/私有、图片/元数据、传输/解码字节分别多少。继续全任务 300,000,000 B 硬限制验收。
 - 在间接助手闭包证明没有引用前，不声称 Background/Gore/Splash 等整类已经可删；这一步是当前待完成工作。
+
+## 发布前独立覆盖复验（2026-10-04）
+
+`verify` 在哈希/对象复验之外，独立要求运行时必需族的公开投影齐全且非空：研究与两类 tooltip 已合并进 `items`，`player-draw-plans` 为私有对照，公开投影额外要求 `item-index`。每个公开 pack 的实际 JSON 行数须匹配声明，族内身份不得重复，`items` 与 `item-index` 身份集合须一致。未知可选族可以保留，不要求私有族独立公开；schema 和 manifest 格式不变。
+
+公开消费关系 `texture-references`、`player-texture-bindings`、`mount-layouts` 的具体 `assetId` 与 `item-index.texture` 必须在公开纹理目录中存在；已赋值坐骑槽不得缺少资产。唯一无图引用例外是官方明确不绘制的 `Wall:0` 哨兵（Wall/0、`not-drawn-sentinel`、空资产）。`npc-frames` 包括源目录的 Bestiary 图片信息，不以这些信息强制扩展已验收的消费闭包。以上 gate 由 extract、review、snapshot、prepare-publication 共用；重新计算缺族 manifest、release 和 stable 指针哈希不能绕过它。
+
+此次已对既有 `042f843054abf79b47aa7b85375c058887ea8a90adab4018742e819adde27ab0` 公共候选执行复验，并对其临时副本删去 `buffs`、重算 release/stable 哈希，确认 verify/snapshot/review 拒绝。未加载或运行 Terraria，也未构造或真实提取新的 `server/Linux + Content/Images` 单 ZIP；精简输入的首次真实重验仍待执行。

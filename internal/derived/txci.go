@@ -15,12 +15,17 @@ const brickCount = 32 * 32 * 32
 // BuildTXCI writes a raw TXCI v3 index with 8x8x8 bricks. The caller handles
 // gzip/hash. Equal-distance groups use the old SciPy EDT's B,G,R coordinate
 // tie order; items within one RGB group use the original priority_key order.
-func BuildTXCI(candidates []Candidate, writer io.Writer) error {
+// scratchDir must be an existing private job directory on disk, not system tmp.
+// Temporary files are removed on success or error.
+func BuildTXCI(candidates []Candidate, writer io.Writer, scratchDir string) error {
 	if err := checkCandidates(candidates); err != nil {
 		return err
 	}
 	if writer == nil {
 		return fmt.Errorf("derived: nil writer")
+	}
+	if scratchDir == "" {
+		return fmt.Errorf("derived: private scratch directory is required")
 	}
 	groups := make(map[uint32][]int, len(candidates))
 	for i, c := range candidates {
@@ -74,7 +79,7 @@ func BuildTXCI(candidates []Candidate, writer io.Writer) error {
 	}
 	dist, label := make([]int32, cubeSize), make([]int32, cubeSize)
 	exactCube(sites, ranks, dist, label)
-	payload, err := os.CreateTemp("", "txci-payload-*.bin")
+	payload, err := os.CreateTemp(scratchDir, "txci-payload-*.bin")
 	if err != nil {
 		return err
 	}

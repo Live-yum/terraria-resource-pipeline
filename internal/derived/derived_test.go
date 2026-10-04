@@ -74,7 +74,7 @@ func TestSynthetic(t *testing.T) {
 		{Kind: 1, Type: 1, B: 2, Stable: true},
 	}
 	var s bytes.Buffer
-	if err := BuildSRGB(c, &s); err != nil {
+	if err := BuildSRGB(c, &s, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if got := srgbLookup(s.Bytes(), 1, false); got != 0 {
@@ -93,7 +93,7 @@ func TestSynthetic(t *testing.T) {
 		t.Fatalf("stable table=%#v", stable)
 	}
 	var x bytes.Buffer
-	if err := BuildTXCI(c, &x); err != nil {
+	if err := BuildTXCI(c, &x, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if got := txciLookup(x.Bytes(), 1); got != 1 {
@@ -111,13 +111,13 @@ func TestSynthetic(t *testing.T) {
 }
 
 func TestCandidateLimits(t *testing.T) {
-	if err := BuildSRGB([]Candidate{{}}, io.Discard); err == nil {
+	if err := BuildSRGB([]Candidate{{}}, io.Discard, t.TempDir()); err == nil {
 		t.Fatal("accepted no stable candidates")
 	}
-	if err := BuildTXCI([]Candidate{{Kind: 2}}, io.Discard); err == nil {
+	if err := BuildTXCI([]Candidate{{Kind: 2}}, io.Discard, t.TempDir()); err == nil {
 		t.Fatal("accepted invalid kind")
 	}
-	if err := BuildTXCI(make([]Candidate, maxCandidates+1), io.Discard); err == nil {
+	if err := BuildTXCI(make([]Candidate, maxCandidates+1), io.Discard, t.TempDir()); err == nil {
 		t.Fatal("accepted too many candidates")
 	}
 }
@@ -128,7 +128,7 @@ func TestLargeRGBGroup(t *testing.T) {
 		c[i] = Candidate{Type: uint16(i), Variant: uint16(i + 300), Paint: uint8(i % 31), R: 3, G: 4, B: 5}
 	}
 	var out bytes.Buffer
-	if err := BuildTXCI(c, &out); err != nil {
+	if err := BuildTXCI(c, &out, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	b := out.Bytes()
@@ -198,12 +198,12 @@ func TestRuntimeCandidates(t *testing.T) {
 	t.Logf("runtime candidates=%d stable=%d unique RGB=%d largest group=%d max variant=%d", len(all), stable, len(groups), maxGroup, maxVariant)
 	var txci, srgb countWriter
 	start := time.Now()
-	if err := BuildTXCI(all, &txci); err != nil {
+	if err := BuildTXCI(all, &txci, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	txciTime := time.Since(start)
 	start = time.Now()
-	if err := BuildSRGB(all, &srgb); err != nil {
+	if err := BuildSRGB(all, &srgb, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("TXCI bytes=%d duration=%s; SRGB bytes=%d duration=%s", txci, txciTime, srgb, time.Since(start))
@@ -237,7 +237,7 @@ func TestRealSRGBOracle(t *testing.T) {
 		c[i] = Candidate{Kind: uint16(kind), Type: uint16(typ), Paint: uint8(paint), R: uint8(code >> 16), G: uint8(code >> 8), B: uint8(code), Stable: true}
 	}
 	var actual bytes.Buffer
-	if e := BuildSRGB(c, &actual); e != nil {
+	if e := BuildSRGB(c, &actual, t.TempDir()); e != nil {
 		t.Fatal(e)
 	}
 	file, e := os.Open(oracle)
@@ -308,7 +308,7 @@ func TestRealTXCIOracle(t *testing.T) {
 		}
 	}
 	var actual bytes.Buffer
-	if e := BuildTXCI(c, &actual); e != nil {
+	if e := BuildTXCI(c, &actual, t.TempDir()); e != nil {
 		t.Fatal(e)
 	}
 	rng := rand.New(rand.NewSource(1458))

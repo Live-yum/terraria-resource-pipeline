@@ -10,8 +10,10 @@ import (
 )
 
 // BuildSRGB writes an uncompressed SRGB index. The caller handles gzip/hash.
+// scratchDir must be an existing private job directory on disk, not system tmp.
+// Temporary files are removed on success or error.
 // Run indexes refer to StableCandidates(candidates), in that compact order.
-func BuildSRGB(candidates []Candidate, writer io.Writer) error {
+func BuildSRGB(candidates []Candidate, writer io.Writer, scratchDir string) error {
 	if err := checkCandidates(candidates); err != nil {
 		return err
 	}
@@ -22,13 +24,16 @@ func BuildSRGB(candidates []Candidate, writer io.Writer) error {
 	if writer == nil {
 		return fmt.Errorf("derived: nil writer")
 	}
-	cube, err := os.CreateTemp("", "srgb-cube-*.bin")
+	if scratchDir == "" {
+		return fmt.Errorf("derived: private scratch directory is required")
+	}
+	cube, err := os.CreateTemp(scratchDir, "srgb-cube-*.bin")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(cube.Name())
 	defer cube.Close()
-	records, err := os.CreateTemp("", "srgb-runs-*.bin")
+	records, err := os.CreateTemp(scratchDir, "srgb-runs-*.bin")
 	if err != nil {
 		return err
 	}

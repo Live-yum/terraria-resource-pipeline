@@ -277,12 +277,12 @@ func Extract(ctx context.Context, options Options) (report Report, err error) {
 		return report, err
 	}
 	phase("rgb-srgb")
-	manifest.RGB.SRGB, err = store.Gzip(".srgb.gz", "application/octet-stream", func(w io.Writer) error { return derived.BuildSRGB(candidates, w) })
+	manifest.RGB.SRGB, err = store.Gzip(".srgb.gz", "application/octet-stream", func(w io.Writer) error { return derived.BuildSRGB(candidates, w, private) })
 	if err != nil {
 		return report, err
 	}
 	phase("rgb-txci")
-	manifest.RGB.TXCI, err = store.Gzip(".txci.gz", "application/octet-stream", func(w io.Writer) error { return derived.BuildTXCI(candidates, w) })
+	manifest.RGB.TXCI, err = store.Gzip(".txci.gz", "application/octet-stream", func(w io.Writer) error { return derived.BuildTXCI(candidates, w, private) })
 	if err != nil {
 		return report, err
 	}
@@ -707,6 +707,9 @@ func Verify(root string) error {
 		return err
 	}
 	if err := validateTextureScope(manifest, len(textures)); err != nil {
+		return err
+	}
+	if err := verifyPublicCoverage(root, manifest, textures); err != nil {
 		return err
 	}
 	if len(manifest.ImageBundles) > 0 {

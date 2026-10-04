@@ -21,6 +21,8 @@ docker run --rm --network none --read-only --cap-drop ALL `
 python tools/RuntimeExtractor/verify_probe.py $out
 ```
 
+The standalone Dockerfile copies and compiles all extractor `*.cs` sources, including `OfficialTextureBindings.cs` and `PlayerTextureClosure.cs`, like the root build. For compilation only (without running the helper or loading a game assembly), use `docker build --target build -t terraria-runtime-extractor:compile tools/RuntimeExtractor`.
+
 Use the directory containing the Linux release `TerrariaServer.exe` and `FNA.dll`. The image is built from the official `mono:6.12` image, verified on Docker 29.7.2. No image is pushed.
 
 ## Output contract

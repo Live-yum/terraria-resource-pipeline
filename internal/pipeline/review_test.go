@@ -46,6 +46,31 @@ func testCandidate(t *testing.T, version, name string) string {
 	manifest := Manifest{Schema: 1, Extractor: "test", GameVersion: "1.4.5." + version, Sources: input.Sources{TextureFiles: 1},
 		Families: map[string][]Pack{"items": {{Rows: len(rows), Object: packObj}}}, Textures: textures,
 		RGB: RGBResources{Candidates: bin, StableCandidates: bin, SRGB: bin, TXCI: bin}, Missing: []string{}}
+	generic, err := s.JSON([]map[string]any{{"id": "fixture"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, family := range requiredPublicFamilies() {
+		if family != "items" {
+			manifest.Families[family] = []Pack{{Rows: 1, Object: generic}}
+		}
+	}
+	bindings, err := s.JSON([]map[string]any{{"id": "fixture", "assetId": "Tiles/1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, family := range []string{"texture-references", "player-texture-bindings"} {
+		manifest.Families[family] = []Pack{{Rows: 1, Object: bindings}}
+	}
+	itemIndex := []map[string]any{}
+	for _, row := range rows {
+		itemIndex = append(itemIndex, map[string]any{"id": row["id"], "texture": "Tiles/1"})
+	}
+	index, err := s.JSON(itemIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Families["item-index"] = []Pack{{Rows: len(rows), Object: index}}
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +163,16 @@ func TestReviewDetailIsDeterministicAndComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest.Families["items"] = []Pack{{Rows: len(rows), Object: object}}
+	indexRows := []map[string]any{}
+	for _, row := range rows {
+		indexRows = append(indexRows, map[string]any{"id": row["id"], "texture": "Tiles/1"})
+	}
+	indexObject, err := store.JSON(indexRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Families["item-index"] = []Pack{{Rows: len(rows), Object: indexObject}}
+
 	data, err = json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +182,7 @@ func TestReviewDetailIsDeterministicAndComplete(t *testing.T) {
 	}
 	first, path1, sha1 := testReview(t, candidate, repo)
 	second, path2, sha2 := testReview(t, candidate, repo)
-	if sha1 != sha2 || first.DetailSHA256 != second.DetailSHA256 || first.DetailBytes != second.DetailBytes || first.DetailCount != 17 {
+	if sha1 != sha2 || first.DetailSHA256 != second.DetailSHA256 || first.DetailBytes != second.DetailBytes || first.DetailCount != 52 {
 		t.Fatalf("nondeterministic or incomplete review: %+v %+v", first, second)
 	}
 	if len(first.Families["items"].Examples) != 5 {

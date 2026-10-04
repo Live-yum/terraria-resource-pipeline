@@ -37,14 +37,29 @@ type RuntimeResult struct {
 
 // These families are the client resource contract, not a game-version whitelist.
 // A helper must not silently skip a renamed/missing ID domain after an update.
+var requiredRuntimeFamilies = []string{
+	"ids", "localization", "items", "item-field-schema", "item-tooltips", "item-ui-tooltips", "research",
+	"tiles", "walls", "map", "map-palette", "map-lookup", "paints", "pixel-candidates",
+	"tile-sets", "wall-sets", "tile-object-data", "mount-layouts", "armor-sets",
+	"prefixes", "buffs", "bestiary", "npc-frames", "dye-shaders", "player-layouts",
+	"texture-references", "player-texture-bindings", "player-draw-plans",
+}
+
+func requiredPublicFamilies() []string {
+	names := []string{"item-index"}
+	for _, name := range requiredRuntimeFamilies {
+		switch name {
+		case "research", "item-tooltips", "item-ui-tooltips", "player-draw-plans":
+			// Research/tooltips are merged into items; draw plans stay private.
+		default:
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 func validateRuntimeCoverage(result RuntimeResult) error {
-	for _, name := range []string{
-		"ids", "localization", "items", "item-field-schema", "item-tooltips", "item-ui-tooltips", "research",
-		"tiles", "walls", "map", "map-palette", "map-lookup", "paints", "pixel-candidates",
-		"tile-sets", "wall-sets", "tile-object-data", "mount-layouts", "armor-sets",
-		"prefixes", "buffs", "bestiary", "npc-frames", "dye-shaders", "player-layouts",
-		"texture-references", "player-texture-bindings", "player-draw-plans",
-	} {
+	for _, name := range requiredRuntimeFamilies {
 		if family, ok := result.Families[name]; !ok || family.Count <= 0 {
 			return fmt.Errorf("required game resource family missing or empty: %s", name)
 		}
