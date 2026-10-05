@@ -352,3 +352,15 @@ Edge默认UA在localhost与`https://www.terrariav.xyz`origin真实fetch同一1,1
 加入分批验证后，最新H5壳为`0664010795a639c1ad7a36c4`，118文件/2,528,521B。再次实际点击My更新并确认同版复核，728/728通过，仅读取真实Java/AList stable86B；完整关闭浏览器、先断网再导航，全25族/人物/画布均通过且pageErrors/routeErrors为0。最终私有报告`full-resource-new-shell-cached-h5-1791017367082/result.json`；此前730路径的真实网络下载报告仍引用旧壳，不把缓存复核冒充重新下载。
 
 最终收尾validate11/11及check:size通过，最终MP610文件/6子包，主包508文件1,364,765B、总2,059,326B；最新H5构建指纹仍为0664010795a639c1ad7a36c4，与最终真实缓存复核报告一致。自有Java下载测试helper已按PID/创建时间/主类/端口身份精确关闭，40473无监听；AList正式资源、其它服务及用户文件保留。资源已实际发布，应用代码/SQL/菜单仍按部署章节上线，未进行本轮远端代码推送或生产应用部署。
+
+## 2026-10-05 离线页面响应与像素写入补修
+
+本地 viewer-app master 提交 c69a98b；主仓库 master ce8a544 更新子模块指针。HBuilder 类字段兼容修复另已提交 viewer-app master64c50e2。均未推送或发布。用户原有 player-portrait.vue、manifest.json、player-mount-layers.test.mjs 三处编辑保留为未提交；验证工作树包含它们。
+
+角色 Tab 保留当前模型和拟合后的预览，不在每次隐藏时清空/重新恢复草稿。多个编辑入口共享会话按 owner 管理；隐藏且不忙时仅在草稿成功持久化后释放，失败卸载保留无 owner 的文档保护，下一次成功保存后可回收，取消借用不丢失未保存文档。首页使用原生 preloadRule 预下载共享资源和角色代码；构建门禁校验同组 2 MiB 预载预算。微信资源缓存读取与 stat 改用原生异步 API，缺失 API 时才使用同步兼容路径；权限失败仍抛出，完整安装校验/SHA/撤销规则保留。
+
+像素画预览、写入和 indexed 流式桥读取当前宽高内 chunks 真正使用的颜色以及实际填补空白的背景，保留 palette 索引。擦除或裁剪后残留的未使用物块3映射不再阻断；实际使用物块3仍拒绝，不放宽稳定白名单。打开目标世界后绑定同版本稳定候选/LUT，空世界预加载使用现有已校验 builtin lease，修复重复绑定与首次远端审批清除 builtin 的问题。
+
+最终 npm run validate 11/11 通过，生成时间2026-10-05T08:23:13Z；小程序5915863B（5.64MiB），主包1508870B。隔离 H5 本地应用壳且阻断所有外部请求，真实 sample.plr 导入后头像非透明，首次角色信息469.8ms、五次返回52.1/79.0/68.6/70.2/82.1ms，无默认角色闪回、pageerror0。不是微信或手机实测；按用户“我自己测试”停止完整资源安装/30轮微信压力验收，不将其标为通过。实际原生异步桥性能仍需用户真机验收。
+
+完整图标内置尚未接入，等待包体选择。历史b2b52a8 Item/NPC图实际为CDN，当前builtin范围没有它们。6195物品→6128逻辑texture（67别名）→6091唯一官方PNG，PNG1536420B+compact索引263282B。546图鉴官方展示帧及索引无损约515531B；其中25custom画像漏入现有approved texture catalog，本地Steam1.4.5.8的XNB齐全且逐SHA记录，桥artifact SHA7b6e194fd5ec4f479b63a1ba2248d10739f27a8c15199438db722b2f651a3936与跟踪manifest一致，不能称这些画像已在线发布。无损 indexed PNG按1/2/4/8bit合法palette位深编码，不量化颜色。全Items+全NPC预计约7.85MiB、可置于共享分包并维持原主包/分包预算；已询问将总目标6MiB改8MiB，未收到回答，因此未扩大包体。当前版本部分图片仍需下载，不能宣称全图标首次离线已完成。本阶段未改 viewer-boot、viewer-admin、TerraWasm、生产数据库或AList。
