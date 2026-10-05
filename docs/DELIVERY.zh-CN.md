@@ -1,6 +1,36 @@
 # Terraria 资源自动化交付记录
 
-## 最新追加：微信存档预览和角色渲染性能修复（2026-10-05）
+## 追加验收：微信文件配额与连续上传（2026-10-05）
+
+本次配额修复已本地提交 viewer-app master `314006b`、Tdecoder 根 master `cf76e6d`；viewer-boot 保持 master `8dc0b22`。未推送、未部署或发布小程序，用户原有三处应用编辑继续保留且未混入提交。下面上一节的 `c30977b`／`a9e5664` 对应语法修复提交。
+
+用户要求在正式审批后连续上传并处理 30 份不同内容的 WLD，且资源保留、输出正确；这项是新的上线验收条件，目前尚未完成。隔离微信项目已经准备，但微信 CLI 的开窗和一次连接恢复均返回 `CONNECT_ERROR / wait WechatIDE authorization timeout`，已请用户允许 Codex 连接，没有清用户缓存、关闭用户项目或绕过授权。资源完整安装和 30 次原生上传／处理尚未执行，不能用下面的 Node 回归代替。
+
+代码修复了保存前配额漏算离线资源的问题：首页、像素画世界写入和角色导出统一使用完整物理空间统计；USER_DATA_PATH 原生批量递归 stat 加 saved-cache 实际列表，按用户路径别名去重。保留总上限 200 MiB 并预留 2 MiB；空间不足只清可重建缓存及不在使用的历史记录，离线资源、当前世界、来源路径和租约文件受保护。缓存清理进一步排除 USER_DATA_PATH 历史和资源，即使 saved list 返回其别名也不删除。统计失败仍拒绝写入，没有把不明占用当作零或吞掉真实 saveFile 错误。
+
+针对性 28 项回归通过，包含原有图片缓存行为、目录缺失／统计失败、usr 别名、写入失败不提交、主文件最后删除及受保护来源。Node 文件系统适配器执行 30 个不同内容的有效 WLD（小／中／大各 10 个种子变体）、60 次完整字节重开、96 MiB 资源占用及 LRU 淘汰；原文件和资源 SHA 保持，结束文件句柄归零。这不是微信原生证明。真实微信夹具也已用当前 bundled WASM 生成：3 个真实世界各 10 个合法 header 变体，共 30 个不同 SHA；名称／尺寸重开检查和原 tiles 区段摘要均保持。来源是 3 个独立世界，不宣称 30 个独立生成世界。
+
+首轮全量 validate 11/11 通过；补充缓存过滤后的全量测试发现两项无 wx 对象的旧测试兼容失败，已修正并通过上述 28 项，最终全量 validate 再次 11/11 通过（包含全部测试、类型、API、架构、WASM来源、H5／微信构建和包体门槛）。最终微信总包 5,912,288 B（5.64 MiB）、主包 1,506,680 B，预算均通过。storage 范围的静态 quality-delta 仍有近期已提交修改的 churn 门槛告警，含本次未改的 world-file.js；局部范围把外部已使用的物理统计函数标为 dead-code，没有将该静态检查写为通过。只读复核和实际源码死代码门槛通过，微信原生验收仍待连接。新构建与实际微信取证脚本保存在私有 `.runtime/deploy-status-20261005/`、`.runtime/upload-stability-wechat-20261005/`，不提交存档、凭据和临时输出。
+
+## 最新追加：体验版上传语法兼容与生产资源审批（2026-10-05）
+
+小程序本地 master `c30977b`、viewer-boot 本地 master `8dc0b22`、Tdecoder 根仓库 master `a9e5664` 已提交，未推送或发布。用户原有的头像近似提示删除、对应断言删除和 manifest 格式改动保留在工作区，不混入本次提交。这里的生产资源审批是用户明确授权的高权限离线数据库操作员动作，审计归属已核实有效的管理员 1／租户 1；没有声称管理员通过 HTTP 登录点击，也没有创建登录 token。
+
+微信体验版上传的 `Unexpected token ?` 源于输出仍含空值合并、可选链和逻辑赋值；除 config/index.js 外，原样复制的两份 Emscripten JS 包装文件也受影响。构建现在只在微信输出降低这三类语法，保持 BigInt 精度、async 和 H5 行为；保留 es6/enhance=false。WASM 二进制与原始生成器 manifest 不变，原始 JS 先按精确 manifest 路径、大小和 SHA 验证，再生成可重复的微信 JS，并校验派生输出。构建结束扫描全部 450 个 JS 文件，HBuilder/watch 路径同样启用；没有通过编辑临时输出解决。
+
+修正精确 artifact 路径约束后的针对性 49/49 和最后全量 validate 11/11 均通过；最终微信总包 5,911,015 B（5.64 MiB）、主包 1,505,408 B，所有预算通过。微信隔离副本冷启动语法／运行错误 0，仅 App.onLaunch 112ms 性能警告 1；真实 small WLD 信息 883.5ms、预览 URL 1230.6ms，新地图截图可见。真实 PLR“烟花”显示彩色非透明头像，导入期间新增警告 0；这是模拟器真实存档回归，不是上传服务器验收或精确首帧计时。保留用户原 IDE／缓存，没有执行体验版上传。
+
+生产审批已完成：六张资源表的修改前完整备份已保存到私有目录（SHA-256 `07c8ee1ebafe5ccee599805b427cb7a7bef3a2f3fa888e38e9b4965f692e2c5a`）。开始时 sequence=0、active=null，其余资源业务表为空。导入任务 `4d835c3f-4c63-44b8-afdd-505a06f8aaa1` 使用真实 READY 提取报告、匹配的 52,611,057 B ZIP 和完整候选；随后执行原生产服务的重新审核、四摘要与序号／任务版本 CAS、持久日志和完整库存发布。2026-10-05 14:24（北京时间）读回任务 published、发布操作 complete，authorityId=`7626af78-d185-4d30-81ed-45b15bfe91e7`、sequence=`1`、active 为 Terraria `1.4.5.8`／manifest `042f843054abf79b47aa7b85375c058887ea8a90adab4018742e819adde27ab0`，已批准库存 729 行（728 个对象及 release.json）。import_ready、review、approve、publish 各一条审计，最终 stateSha256=`160adf5fbb0237a06caf59e386e6a84269af73da717381a8c97d8918f45e075a`。操作进程退出码 0；真实 AList stable 内容保持。未使用 H2 占位回执，未直接 UPDATE active。
+
+实际部署包为 viewer-boot/yudao-server/target/yudao-server.jar，167,453,437 B、SHA-256 `20cee24c373c99de85bebc241bc39a9066fa7ec9cb1d3bbfeee8f6ef6ab1a7ca`；核实可执行 JAR 内模块和 Controller 与当前构建一致。在空任务目录、提取 worker 关闭的新后端进程，匿名审批状态 HTTP 200／code=0／sequence=1，清单代理下载与真实百度直链下载均为 HTTP 200、210,951 B 且 SHA 匹配批准清单；私有路径、无效路径、错误版本均 HTTP 404／no-store。证明已批准资源的公共读取不依赖本机候选或旧任务目录。证据位于私有 `.runtime/deploy-status-20261005/`。
+
+真实 H5 按需加载只下载清单、物块分片、纹理目录和一个 ZIP 桶，共 4 个响应／890,614 B，逐项 SHA 一致；保存 41 张 PNG、2 个对象和 1 份清单。关闭浏览器后，使用同一隔离 profile 完全断网冷启动，256 个条目与 Item_1 真实解码图片摘要保持，资源正文网络请求为 0；completeRemote=false、完整安装 active=null，这项证明局部离线缓存可用，不冒充完整安装。原始报告位于 `.runtime/reports/partial-approved-c30977b-1791181661033/result.json`。
+
+本次审批／发布进程记录 5,273 个采样：Java 内核峰值工作集 259,702,784 B，Java 与直属 Go 子进程同一扫描峰值 276,185,088 B（约 263 MiB）。这不包含独立 QA 后端，也不是重新运行全链路游戏提取；后文完整提取联动的 464,072,704 B 超目标记录仍有效。
+
+上线配置核对：使用本地最新 viewer-boot `8dc0b22`，先 install 更新模块，再 clean package 后端入口，避免 Maven 复用旧的可执行 JAR；加载现有生产 profile 及 resource-pipeline 配置。AList 凭据仍仅后端，资源根 `/WeChat/resources`，实测下载节点 `bjbgp01.baidupcs.com` 已设为精确默认白名单，不需要额外设置 TRP_ALIST_TRUSTED_DOWNLOAD_HOSTS；显式覆盖仍生效，其他域名和恶意后缀仍拒绝。实际完整框架会将 ResponseStatusException 改写为 HTTP 200／业务 500，因此公共资源 Controller 已增加局部状态处理；HTTP 回归使用优先全局 advice 确认局部处理生效，私有、撤销和错误清单保持 404／no-store。小程序默认允许对应 HTTPS origin；微信后台需同时允许业务域名请求及该节点的下载域名。当前生产 approval-state 返回业务 401，须部署新后端后验证匿名 code=0、active 和 sequence 正确；这不是修改数据库就能改变的旧部署行为。当前版本公共下载不要求启用提取 worker；将来自动上传／提取／审核需按 viewer-boot/docs/resource-pipeline.md 部署 Go、Docker、专用持久目录并启用 worker，管理后台也部署本地版本。已迁移的同一个 viewer_pro 无需重复执行非幂等 ALTER。
+
+## 上一阶段追加：微信存档预览和角色渲染性能修复（2026-10-05）
 
 本阶段仅修改 viewer-app，并更新 Tdecoder 根仓库的应用 gitlink 和本交付记录；没有修改 TerraWasm、后端、管理端、数据库、AList 或图片仓库。保留成就、装备上传、激励广告、审批、撤销、防重放、远端优先和完整离线安装。小程序本地 master 提交 `e5dd9ea`，根仓库 master 提交 `c56695a`；不推送或部署。以下“上一轮追加”及后面的历史记录不代表当前测试范围。
 
