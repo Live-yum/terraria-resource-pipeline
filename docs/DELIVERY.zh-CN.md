@@ -363,4 +363,20 @@ Edge默认UA在localhost与`https://www.terrariav.xyz`origin真实fetch同一1,1
 
 最终 npm run validate 11/11 通过，生成时间2026-10-05T08:23:13Z；小程序5915863B（5.64MiB），主包1508870B。隔离 H5 本地应用壳且阻断所有外部请求，真实 sample.plr 导入后头像非透明，首次角色信息469.8ms、五次返回52.1/79.0/68.6/70.2/82.1ms，无默认角色闪回、pageerror0。不是微信或手机实测；按用户“我自己测试”停止完整资源安装/30轮微信压力验收，不将其标为通过。实际原生异步桥性能仍需用户真机验收。
 
-完整图标内置尚未接入，等待包体选择。历史b2b52a8 Item/NPC图实际为CDN，当前builtin范围没有它们。6195物品→6128逻辑texture（67别名）→6091唯一官方PNG，PNG1536420B+compact索引263282B。546图鉴官方展示帧及索引无损约515531B；其中25custom画像漏入现有approved texture catalog，本地Steam1.4.5.8的XNB齐全且逐SHA记录，桥artifact SHA7b6e194fd5ec4f479b63a1ba2248d10739f27a8c15199438db722b2f651a3936与跟踪manifest一致，不能称这些画像已在线发布。无损 indexed PNG按1/2/4/8bit合法palette位深编码，不量化颜色。全Items+全NPC预计约7.85MiB、可置于共享分包并维持原主包/分包预算；已询问将总目标6MiB改8MiB，未收到回答，因此未扩大包体。当前版本部分图片仍需下载，不能宣称全图标首次离线已完成。本阶段未改 viewer-boot、viewer-admin、TerraWasm、生产数据库或AList。
+上一轮完整图标仅完成测量。用户随后接受8 MiB总包目标，本轮已接入，结果如下。
+
+## 2026-10-05 全量内置图标与像素写入修复
+
+viewer-app共享物品分包内置6195 ID、6128纹理绑定、6091张唯一官方PNG（保持原sheet与sourceRect），图鉴分包内置546条官方选定展示帧；无损索引色PNG不量化RGBA。25条专用画像来自本机Steam1.4.5.8的XNB，逐源SHA、固定桥工具SHA验证并记录provenance，未冒充已审核线上资源。内置图鉴采用单帧绑定，避免组件再次裁切。构建资源copier、原生异步分包ready、完整离线安装与H5离线壳共同包含四个共享资源分包。
+
+已有042f远端清单漏25张专用画像，图鉴专用投影在选择远端前检查entries/frames/texture catalog闭包，缺图整体回退内置，其他页面原会话不受影响；不跨版本借图片或帧配置。线上审批、SHA、撤销与权限域规则保持。
+
+映射预览原来直接读取像素页留下的全局目录，像素页释放后报“稳定材料尚未准备”。写入页现自持localFirst候选会话，隐藏/卸载与晚到请求释放，不为预览读取SRGB。准备按session并发，所有await完成后才在同步解析期间临时绑定并恢复catalog/LUT；实际写入使用世界会话准备的同版候选/LUT。云方案刷新之后在自己的候选scope重建有效方案，避免冷启动时刷新覆盖内置方案为空。真正使用危险物块仍被拒绝，palette索引不变。实测另外发现H5收起抽屉依赖早期零宽度导致手柄移出屏幕，改为CSS固定露出高度。
+
+最终validate-complete于2026-10-05T09:58:41Z生成，11/11检查通过；随后按用户选择恢复es6:false/enhance:false，再次MP构建及包体门禁通过，产物配置读回均为false。最终MP总8,241,318B（7.8595MiB），主包1,519,151B，Items分包1,800,010B，NPC分包514,532B；主包1.5MiB/每分包1,800KiB/首页预载2MiB门禁均通过。新图标合同覆盖全部6195/546条并校验PNG尺寸/SHA；真实SFC测试覆盖冷页、hide/show、卸载晚到、两个版本真并发、默认绑定不被覆盖、RGB成对恢复和撤销。轻量预览与完整官方SRGB抽样50颜色一致。三次重生成内置descriptor摘要相同c1cb5796e1c2c9e17edc8e2ae6fbd4ee2cc25b27a583786d70080fe382f6245c。
+
+隔离真实H5构建、全外网请求拦截、全新浏览器context：冷写入页内置方案可见1244.8ms；真实WLD副本预览432.6ms；图鉴首40张PNG可见676.4ms；真实PLR背包PNG112.6ms；像素页隐藏后映射预览可见，确认写入后真实WLD事务与保存1105.6ms（含少量UI时间，广告平台边界模拟完成）；pageerror0。不是微信真机耗时，不恢复用户取消的30轮微信测试。私有证据位于.runtime/offline-responsiveness-20261005/icons-write；全部11项复验在validate-8mib-complete.log。
+
+此轮只修改viewer-app、主仓库gitlink与交付文档，不修改后端、管理端、TerraWasm、生产数据库或AList；不推送或部署。用户原有portrait、manifest和mount测试编辑保持独立，测量来自当时工作树而非声称纯commit字节完全相同。静态ripwire冷索引超时停止，未宣称该质量检查通过。
+
+小程序修复已本地提交master：c1898bc9；manifest中其余minified/packOptions编辑仍留工作树，用户确认的二次编译关闭值与HEAD一致。
