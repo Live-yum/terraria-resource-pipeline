@@ -106,10 +106,10 @@ class ExperimentTests(unittest.TestCase):
     def test_requires_all_variant_proofs(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)
-            with self.assertRaises(ValueError):experiment.plans({'schema':1,'engineSourceCommit':'a'*40,'variants':[]},root,root)
+            with self.assertRaises(ValueError):experiment.plans({'schema':1,'engineSourceCommit':'a'*40,'compiler':'emcc synthetic-test','variants':[]},root,root)
     def test_memory_gate_preserves_defaults_and_rejects_forged_proof(self):
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder);proof={'schema':1,'engineSourceCommit':'a'*40,'variants':[]}
+            root=Path(folder);proof={'schema':1,'engineSourceCommit':'a'*40,'compiler':'emcc synthetic-test','variants':[]}
             for opt in ('-O3','-Oz'):
                 for simd in (False,True):
                     item=dict(optimization=opt,simd=simd,method='linked-symbols-and-bounded-stack-analysis',staticDataEnd=8<<20,stackBytes=5<<20,
@@ -135,6 +135,11 @@ class ExperimentTests(unittest.TestCase):
             plan=experiment.plans(proof,root,root)
             self.assertFalse(plan['defaultChanged']);self.assertEqual(len(plan['experiments']),12)
             self.assertEqual(sum(v['status']=='eligible' for v in plan['experiments']),8)
+            for entry in plan['experiments']:
+                if entry['status']=='eligible':
+                    self.assertIn('-DTERRAX_BUILD_COMMIT='+'a'*40,entry['configure'])
+                    self.assertIn('-DTERRAX_BUILD_DIRTY=false',entry['configure'])
+                    self.assertFalse(any('VIEWER_WEB_PROFILE' in flag for flag in entry['configure']))
             (root/'wasm').write_bytes(b'changed')
             with self.assertRaises(ValueError):experiment.plans(proof,root,root)
     def test_rejects_recursive_or_dynamic_stack(self):

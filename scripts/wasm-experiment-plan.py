@@ -90,6 +90,8 @@ def bounded_stack(analysis):
 def plans(proof, root, evidence_root):
     if proof.get('schema') != 1 or not re.fullmatch('[0-9a-f]{40}', proof.get('engineSourceCommit', '')):
         raise ValueError('invalid source proof')
+    if not isinstance(proof.get('compiler'),str) or not proof['compiler'].strip() or '\n' in proof['compiler']:
+        raise ValueError('single-line compiler identity required')
     result = []
     variants = {(p['optimization'], p['simd']): p for p in proof['variants']}
     if len(variants) != len(proof['variants']):
@@ -123,7 +125,8 @@ def plans(proof, root, evidence_root):
                 build = str(root / ('build-experiment-%d-%s-%s' % (memory, optimize[1:], 'simd' if simd else 'scalar')))
                 flags = '-msimd128' if simd else ''
                 entry['configure'] = ['emcmake', 'cmake', '-S', str(root), '-B', build,
-                    '-DTERRAWASM_FEATURE_SET=wld', '-DTERRAX_VIEWER_WEB_PROFILE=ON',
+                    '-DTERRAWASM_FEATURE_SET=wld', '-DTERRAX_BUILD_COMMIT='+proof['engineSourceCommit'],
+                    '-DTERRAX_BUILD_DIRTY=false', '-DTERRAX_BUILD_COMPILER='+proof['compiler'],
                     '-DTERRAX_WEB_INITIAL_MEMORY=%d' % (memory*MIB),
                     '-DTERRAX_OPTIMIZE_FLAG=' + optimize, '-DCMAKE_C_FLAGS=' + flags,
                     '-DCMAKE_EXE_LINKER_FLAGS=' + flags]
@@ -149,6 +152,9 @@ def main():
     plan = plans(proof, args.engine_root.resolve(), args.evidence_root)
     print(json.dumps(plan, indent=2))
     if args.execute:
+        compiler=subprocess.check_output(['emcc','--version'],text=True).splitlines()[0].strip()
+        if compiler!=proof['compiler']:
+            raise ValueError('installed compiler differs from the static/stack proof')
         for entry in plan['experiments']:
             if entry['status'] == 'eligible':
                 subprocess.run(entry['configure'], check=True)
