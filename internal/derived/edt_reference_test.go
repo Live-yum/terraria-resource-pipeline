@@ -1,12 +1,5 @@
 package derived
 
-const infinity int32 = 100000000
-
-type site struct {
-	code  uint32
-	label int32
-}
-
 // legacyExactCube is the pre-optimization regression reference. It is not a game oracle.
 // exactCube is the integer lower-envelope transform from stable-rgb-transform.cpp.
 // dist and label are the only full-cube buffers (128 MiB total).
