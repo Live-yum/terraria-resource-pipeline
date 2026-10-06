@@ -97,6 +97,9 @@ def verify(identity, root):
             if claim:
                 require(runtime.get(kind + 'WorkspaceAbiVersion') == claim['version'], 'loaded workspace ABI mismatch: ' + kind)
     report = json.loads(read(root, paths['differentialReport']))
+    report_base = Path(paths['differentialReport']).parent
+    def case_bytes(relative):
+        return read(root, (report_base / relative).as_posix())
     bound = ('appCommit', 'engineSourceCommit', 'extractorCommit', 'gameAssemblySha256', 'resourceManifestSha256', 'builtinDescriptorSha256', 'authorityId', 'sequence')
     require(all(report.get(key) == identity[key] for key in bound), 'differential provenance mismatch')
     require(report.get('producer') == 'executed-game-assembly-vs-native', 'differential report is not an executed game comparison')
@@ -105,9 +108,13 @@ def verify(identity, root):
     require(len({v['id'] for v in cases}) == len(cases), 'duplicate differential cases')
     for case in cases:
         require(case['status'] == 'passed' and case['gameMethod'] and case['nativeEntryPoint'], 'differential case not passed/executed')
+        dependencies=case.get('inputDependencies')
+        require(isinstance(dependencies,list) and dependencies, 'differential fixture dependencies missing')
+        for dependency in dependencies:
+            require(sha(case_bytes(dependency['path'])) == dependency['sha256'], 'differential fixture dependency changed')
         for kind in ('input', 'game', 'native'):
-            require(sha(read(root, case[kind + 'Path'])) == case[kind + 'Sha256'], 'differential evidence bytes mismatch')
-        require(read(root, case['gamePath']) == read(root, case['nativePath']), 'differential output differs')
+            require(sha(case_bytes(case[kind + 'Path'])) == case[kind + 'Sha256'], 'differential evidence bytes mismatch')
+        require(case_bytes(case['gamePath']) == case_bytes(case['nativePath']), 'differential output differs')
     return {'schema': 1, 'status': 'assembly-verified', 'identitySha256': sha(canonical(identity)),
             'differentialCases': len(cases), 'authoritySnapshotOnly': True}
 

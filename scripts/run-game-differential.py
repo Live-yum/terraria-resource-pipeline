@@ -44,15 +44,21 @@ def run(config, root, output):
         dependencies = case.get('dependencies', {})
         if not dependencies:
             raise ValueError('real TMRT/player dependency digests are required')
+        dependency_evidence=[]
         for relative, expected in dependencies.items():
             path = (source.parent / relative).resolve()
             if not path.is_relative_to(root.resolve()) or sha(path.read_bytes()) != expected:
                 raise ValueError('fixture dependency mismatch')
+            target=output/'fixtures'/(expected+'.bin')
+            target.parent.mkdir(exist_ok=True)
+            if not target.exists():target.write_bytes(path.read_bytes())
+            if sha(target.read_bytes())!=expected:raise ValueError('dependency changed while snapshotting')
+            dependency_evidence.append({'path':'fixtures/'+expected+'.bin','sha256':expected})
         if sha(data) != case['inputSha256']: raise ValueError('input fixture digest mismatch')
         prefix = case['id']
         (output / (prefix + '.input')).write_bytes(data)
         entry = {'id': prefix, 'category': case['category'], 'inputPath': prefix+'.input', 'inputSha256': sha(data),
-                 'gameMethod': case['gameMethod'], 'nativeEntryPoint': case['nativeEntryPoint']}
+                 'gameMethod': case['gameMethod'], 'nativeEntryPoint': case['nativeEntryPoint'], 'inputDependencies': dependency_evidence}
         for side in ('game', 'native'):
             # Adapter receives the same file bytes, plus explicit provenance. No
             # expected output is visible to the other adapter during execution.

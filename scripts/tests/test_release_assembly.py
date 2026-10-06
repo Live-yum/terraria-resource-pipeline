@@ -56,6 +56,7 @@ class AssemblyTests(unittest.TestCase):
             row={'id':category,'category':category,'status':'passed','gameMethod':'synthetic-protocol-test','nativeEntryPoint':'synthetic-protocol-test'}
             for kind in ('input','game','native'):
                 path=category+'.'+kind;row[kind+'Path']=path;row[kind+'Sha256']=self.put(path,b'unit-test-only')
+            row['inputDependencies']=[{'path':category+'.input','sha256':row['inputSha256']}]
             report['cases'].append(row)
         self.put('differential.json',report)
         return identity
@@ -69,6 +70,17 @@ class AssemblyTests(unittest.TestCase):
         for sequence in (1,'01','-1',True,'1.0'):
             bad=copy.deepcopy(self.identity);bad['sequence']=sequence
             with self.subTest(sequence=sequence),self.assertRaises(ValueError):verify.verify(bad,self.root)
+    def test_nested_differential_bundle_paths_resolve_from_report(self):
+        report=json.loads((self.root/'differential.json').read_bytes())
+        nested=self.root/'bundle';nested.mkdir()
+        for case in report['cases']:
+            for kind in ('input','game','native'):
+                (self.root/case[kind+'Path']).rename(nested/case[kind+'Path'])
+        (self.root/'differential.json').rename(nested/'report.json')
+        self.identity['evidence']['differentialReport']='bundle/report.json'
+        self.assertEqual(verify.verify(self.identity,self.root)['differentialCases'],5)
+        (nested/report['cases'][0]['inputPath']).write_bytes(b'tampered')
+        with self.assertRaises(ValueError):verify.verify(self.identity,self.root)
     def test_wrong_artifact_or_escaping_path_rejected(self):
         self.put('artifacts/wld.wasm',b'tampered')
         with self.assertRaises(ValueError):verify.verify(self.identity,self.root)
