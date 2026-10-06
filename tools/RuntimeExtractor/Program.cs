@@ -29,6 +29,7 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--oracle") return GameOracleProbe.Run(args.Skip(1).ToArray());
         if (args.Length != 4 || args[0] != "--server" || args[2] != "--output")
         {
             Console.Error.WriteLine("Usage: RuntimeExtractor --server /input/TerrariaServer.exe --output /output");
@@ -75,6 +76,13 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    internal static void BootstrapOracle(Assembly assembly, string directory)
+    {
+        game = assembly;
+        output = directory;
+        Bootstrap();
     }
 
     private static void Bootstrap()

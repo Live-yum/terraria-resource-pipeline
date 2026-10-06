@@ -1,9 +1,11 @@
 FROM golang:1.23-bookworm AS go-build
 WORKDIR /src
+ARG SOURCE_COMMIT=""
+ARG SOURCE_CLEAN="false"
 COPY go.mod ./
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /trp ./cmd/trp
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X terraria-resource-pipeline/internal/pipeline.BuildCommit=${SOURCE_COMMIT} -X terraria-resource-pipeline/internal/pipeline.BuildClean=${SOURCE_CLEAN}" -o /trp ./cmd/trp
 
 FROM mono:6.12 AS runtime-build
 WORKDIR /build

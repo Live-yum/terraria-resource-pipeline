@@ -17,6 +17,8 @@ jobs:
           cache: false
       - run: go test ./...
       - run: go vet ./...
+      - run: python3 -m unittest discover -s scripts/tests -v
+      - run: python3 -m py_compile scripts/*.py
       - run: |
           mkdir -p .runtime/container
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o .runtime/container/trp ./cmd/trp
