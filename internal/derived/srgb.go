@@ -14,6 +14,11 @@ import (
 // Temporary files are removed on success or error.
 // Run indexes refer to StableCandidates(candidates), in that compact order.
 func BuildSRGB(candidates []Candidate, writer io.Writer, scratchDir string) error {
+	return new(CubeWorkspace).BuildSRGB(candidates, writer, scratchDir)
+}
+
+// BuildSRGB reuses the workspace buffers; calls on one workspace must be serial.
+func (workspace *CubeWorkspace) BuildSRGB(candidates []Candidate, writer io.Writer, scratchDir string) error {
 	if err := checkCandidates(candidates); err != nil {
 		return err
 	}
@@ -39,7 +44,7 @@ func BuildSRGB(candidates []Candidate, writer io.Writer, scratchDir string) erro
 	}
 	defer os.Remove(records.Name())
 	defer records.Close()
-	dist, label := make([]int32, cubeSize), make([]int32, cubeSize)
+	dist, label := workspace.acquire()
 	var orders [2][]int
 	for pass := 0; pass < 2; pass++ {
 		order := make([]int, len(stable))
@@ -63,8 +68,10 @@ func BuildSRGB(candidates []Candidate, writer io.Writer, scratchDir string) erro
 			sites[rank] = site{rgb(stable[original]), int32(rank)}
 			ranks[rank] = int32(rank)
 		}
-		exactCube(sites, ranks, dist, label)
+		workspace.phase("srgb-transform")
+		 exactCube(sites, ranks, dist, label)
 		if pass == 0 {
+			workspace.phase("srgb-spool")
 			buf := bufio.NewWriterSize(cube, 1<<20)
 			var line [512]byte
 			for at := 0; at < cubeSize; at += 256 {
@@ -84,6 +91,7 @@ func BuildSRGB(candidates []Candidate, writer io.Writer, scratchDir string) erro
 		}
 	}
 	order := orders[1]
+	workspace.phase("srgb-runs")
 	directory := make([]uint32, 65537)
 	buf := bufio.NewWriterSize(records, 1<<20)
 	var first [512]byte
@@ -115,6 +123,7 @@ func BuildSRGB(candidates []Candidate, writer io.Writer, scratchDir string) erro
 	if err := buf.Flush(); err != nil {
 		return err
 	}
+	workspace.phase("srgb-output")
 	var header [12]byte
 	copy(header[:], "SRGB")
 	binary.LittleEndian.PutUint32(header[4:], uint32(len(stable)))

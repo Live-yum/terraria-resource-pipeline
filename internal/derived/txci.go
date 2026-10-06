@@ -18,6 +18,11 @@ const brickCount = 32 * 32 * 32
 // scratchDir must be an existing private job directory on disk, not system tmp.
 // Temporary files are removed on success or error.
 func BuildTXCI(candidates []Candidate, writer io.Writer, scratchDir string) error {
+	return new(CubeWorkspace).BuildTXCI(candidates, writer, scratchDir)
+}
+
+// BuildTXCI reuses the workspace buffers; calls on one workspace must be serial.
+func (workspace *CubeWorkspace) BuildTXCI(candidates []Candidate, writer io.Writer, scratchDir string) error {
 	if err := checkCandidates(candidates); err != nil {
 		return err
 	}
@@ -77,8 +82,10 @@ func BuildTXCI(candidates []Candidate, writer io.Writer, scratchDir string) erro
 		sites[id] = site{code, int32(id)}
 		ranks[id] = bgrRank(code)
 	}
-	dist, label := make([]int32, cubeSize), make([]int32, cubeSize)
+	dist, label := workspace.acquire()
+	workspace.phase("txci-transform")
 	exactCube(sites, ranks, dist, label)
+	workspace.phase("txci-bricks")
 	payload, err := os.CreateTemp(scratchDir, "txci-payload-*.bin")
 	if err != nil {
 		return err
@@ -168,6 +175,7 @@ func BuildTXCI(candidates []Candidate, writer io.Writer, scratchDir string) erro
 	if _, err := payload.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
+	workspace.phase("txci-output")
 	colorsOff := uint32(44)
 	groupsOff := align4(colorsOff + uint32(len(colors)*3))
 	itemsOff := groupsOff + uint32(len(groupOffsets)*4)

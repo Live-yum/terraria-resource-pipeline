@@ -13,6 +13,7 @@ import (
 
 type MemoryStage struct {
 	Stage           string `json:"stage"`
+	WorkspaceBytes uint64 `json:"trackedWorkspaceBytes,omitempty"`
 	Milliseconds    int64  `json:"milliseconds"`
 	PeakRSSBytes    uint64 `json:"peakRssBytes,omitempty"`
 	PeakHeapBytes   uint64 `json:"peakGoHeapBytes"`
@@ -156,4 +157,14 @@ func (m *memoryMonitor) finish() MemoryReport {
 		m.report.Stages = append(m.report.Stages, m.current)
 	}
 	return m.report
+}
+
+// derivedPhase records an exact owned-buffer count separately from sampled RSS
+// and Go heap. Cgroup peaks remain cumulative and cannot be attributed to a phase.
+func (m *memoryMonitor) derivedPhase(name string, workspaceBytes uint64) {
+    m.phase(name)
+    m.mu.Lock()
+    m.current.WorkspaceBytes = workspaceBytes
+    m.mu.Unlock()
+    m.sample()
 }

@@ -1,31 +1,22 @@
 package derived
 
-const infinity int32 = 100000000
-
-type site struct {
-	code  uint32
-	label int32
-}
-
+// legacyExactCube is the pre-optimization regression reference. It is not a game oracle.
 // exactCube is the integer lower-envelope transform from stable-rgb-transform.cpp.
-// dist and label are the only full-cube buffers (96 MiB total).
-// Labels fit uint16 because the public candidate limit is 65534. Infinity in
-// dist is the validity sentinel, so no signed label sentinel is needed.
-func exactCube(sites []site, ranks []int32, dist []int32, label []uint16) {
+// dist and label are the only full-cube buffers (128 MiB total).
+func legacyExactCube(sites []site, ranks []int32, dist, label []int32) {
 	for i := range dist {
 		dist[i] = infinity
-		label[i] = 0
+		label[i] = -1
 	}
 	for _, s := range sites {
 		at := int(s.code)
 		if dist[at] != 0 || ranks[s.label] < ranks[label[at]] {
 			dist[at] = 0
-			label[at] = uint16(s.label)
+			label[at] = s.label
 		}
 	}
 	for _, stride := range [...]int{1, 256, 65536} {
-		var f [256]int32
-		var l [256]uint16
+		var f, l [256]int32
 		var vertex, start [256]int
 		for outer := 0; outer < cubeSize; outer += stride * 256 {
 			for inner := 0; inner < stride; inner++ {

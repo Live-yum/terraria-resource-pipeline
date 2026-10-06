@@ -276,16 +276,19 @@ func Extract(ctx context.Context, options Options) (report Report, err error) {
 	if err != nil {
 		return report, err
 	}
+	workspace := &derived.CubeWorkspace{Phase: monitor.derivedPhase}
+	defer workspace.Release()
 	phase("rgb-srgb")
-	manifest.RGB.SRGB, err = store.Gzip(".srgb.gz", "application/octet-stream", func(w io.Writer) error { return derived.BuildSRGB(candidates, w, private) })
+	manifest.RGB.SRGB, err = store.Gzip(".srgb.gz", "application/octet-stream", func(w io.Writer) error { return workspace.BuildSRGB(candidates, w, private) })
 	if err != nil {
 		return report, err
 	}
 	phase("rgb-txci")
-	manifest.RGB.TXCI, err = store.Gzip(".txci.gz", "application/octet-stream", func(w io.Writer) error { return derived.BuildTXCI(candidates, w, private) })
+	manifest.RGB.TXCI, err = store.Gzip(".txci.gz", "application/octet-stream", func(w io.Writer) error { return workspace.BuildTXCI(candidates, w, private) })
 	if err != nil {
 		return report, err
 	}
+	workspace.Release()
 	candidates, stable = nil, nil
 	phase("verify")
 	if err := writeJSON(filepath.Join(output, "manifest.json"), manifest); err != nil {
@@ -298,6 +301,11 @@ func Extract(ctx context.Context, options Options) (report Report, err error) {
 	if err != nil {
 		return report, err
 	}
+	commit, clean := extractorIdentity()
+	if err = writeJSON(filepath.Join(private, "extraction-identity.json"), map[string]any{
+		"schema": 1, "extractorCommit": commit, "cleanBuild": clean,
+		"gameAssemblySha256": sources.ServerSHA256, "resourceManifestSha256": report.ManifestSHA256,
+	}); err != nil { return report, err }
 	report.Missing = manifest.Missing
 	report.Status = "ready"
 	if len(manifest.Missing) != 0 {
